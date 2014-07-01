@@ -1,0 +1,6 @@
+appdirs
+apscheduler>=3.0.0b2
+bottle
+docker-py
+pytz
+waitress

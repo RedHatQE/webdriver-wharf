@@ -21,6 +21,8 @@ var/
 *.egg-info/
 .installed.cfg
 *.egg
+AUTHORS
+ChangeLog
 
 # Installer logs
 pip-log.txt
@@ -44,6 +46,9 @@ coverage.xml
 
 # Rope
 .ropeproject
+
+# Codeintel
+.codeintel
 
 # Django stuff:
 *.log
