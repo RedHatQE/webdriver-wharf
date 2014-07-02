@@ -13,7 +13,7 @@ from pytz import utc
 from webdriver_wharf import db, interactions, lock
 
 pool = set()
-logger = logging.getLogger('webdriver_wharf.app')
+logger = logging.getLogger(__name__)
 image_name = os.environ.get('WEBDRIVER_WHARF_IMAGE', 'cfmeqe/sel_ff_chrome')
 # Number of containers to have on "hot standby" for checkout
 pool_size = os.environ.get('WEBDRIVER_WHARF_POOL_SIZE', 4)

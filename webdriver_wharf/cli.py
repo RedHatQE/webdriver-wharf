@@ -6,7 +6,7 @@ from bottle import run
 
 from webdriver_wharf import app, logging_init
 
-logger = logging.getLogger('webdriver_wharf.cli')
+logger = logging.getLogger(__name__)
 
 loglevel = getattr(logging, os.environ.get('WEBDRIVER_WHARF_LOG_LEVEL', 'info').upper(), 'INFO')
 listen_host = os.environ.get('WEBDRIVER_WHARF_LISTEN_HOST', '0.0.0.0')

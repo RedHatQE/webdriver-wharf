@@ -10,7 +10,7 @@ from sqlalchemy import create_engine, Column, DateTime, Integer, String
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
 
-logger = logging.getLogger('webdriver_wharf.db')
+logger = logging.getLogger(__name__)
 thread_local = local()
 Base = declarative_base()
 

@@ -23,7 +23,7 @@ _vnc_port_offset = 5900 - _wd_port_start
 _ssh_port_offset = 2200 - _wd_port_start
 
 client = docker.Client()
-logger = logging.getLogger('webdriver_wharf.interactions')
+logger = logging.getLogger(__name__)
 container_pool_size = 4
 
 
