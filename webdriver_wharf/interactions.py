@@ -70,7 +70,7 @@ def create_container(image):
         session.add(container)
         session.expire_on_commit = False
 
-    logger.info('Container %s created (id: %s)', name, container_id)
+    logger.info('Container %s created (id: %s)', name, container_id[:12])
     return container
 
 
