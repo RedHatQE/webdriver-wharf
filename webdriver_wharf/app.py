@@ -210,6 +210,9 @@ balance_containers.trigger = lambda: scheduler.modify_job(
 # starts the scheduler before running the webserver
 class WharfServer(ServerAdapter):
     def run(self, handler):
+        from pkg_resources import require
+        version = require("webdriver-wharf")[0].version
+        logger.info('version %s', version)
         # Before doing anything else, grab the image or explode
         pull_latest_image()
         scheduler.start()
