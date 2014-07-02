@@ -222,8 +222,3 @@ class WharfServer(ServerAdapter):
         logging.getLogger('apscheduler.executors.default').setLevel(logging.ERROR)
         logger.info('Initializing pool, ready for checkout')
         waitress.serve(handler, host=self.host, port=self.port, threads=pool_size * 2)
-        checkin('all')
-        containers = interactions.containers()
-        logger.info('Shutting down, cleaning up %d containers', len(containers))
-        for container in containers:
-            interactions.destroy(container)

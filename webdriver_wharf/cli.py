@@ -20,5 +20,8 @@ signal.signal(signal.SIGHUP, handle_hup)
 
 
 def main():
+    # TODO: Centralized config would be nice, bring in argparse or something that already
+    # handles envvars. Also expose interactions.destroy_all somehow, so wharf can clean
+    # up after itself when asked
     logging_init(loglevel)
     run(app.application, server=app.WharfServer, host=listen_host, port=listen_port, quiet=True)

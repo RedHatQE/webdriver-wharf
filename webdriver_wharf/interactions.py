@@ -120,6 +120,12 @@ def destroy(container):
     logger.info('Container %s destroyed', container.name)
 
 
+def destroy_all():
+    c = containers()
+    logger.info('Destroying %d containers', len(containers))
+    map(destroy, c)
+
+
 def checkout(container):
     if not is_running(container):
         start(container)
