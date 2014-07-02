@@ -56,7 +56,7 @@ class Container(Base):
         return {
             22: self.ssh_port,
             4444: self.webdriver_port,
-            5900: self.vnc_port,
+            5999: self.vnc_port,
         }
 
     @classmethod
