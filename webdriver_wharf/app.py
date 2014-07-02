@@ -155,11 +155,8 @@ def balance_containers():
     # Clean up before interacting with the pool
     interactions.cleanup(image_name, max_checkout_time)
 
-    # Keep track of whether or not a change was made to get warm and/or fuzzy logging when
-    # the pool size is back to where it should be after making a change
-    changed = False
-
-    while True:
+    pool_balanced = False
+    while not pool_balanced:
         # Grabs/releases the lock each time through the loop so checkouts don't have to wait
         # too long if a container's being destroyed
         with lock:
@@ -190,7 +187,6 @@ def balance_containers():
                 if oldest_container.image_id != latest_image_id:
                     # destroy containers with old image ids
                     interactions.destroy(oldest_container)
-                changed = True
 
         # Starting containers can happen at-will, and shouldn't be done under lock
         # so that checkouts don't have to block unless the pool is exhausted
@@ -203,12 +199,10 @@ def balance_containers():
             logger.info('Pool %s, adding container %s',
                 pool_stat_str, container_to_start.name)
             interactions.start(container_to_start)
-            changed = True
 
         if not (containers_to_start or containers_to_stop):
-            if changed:
-                logger.info('Pool %s', pool_stat_str)
-            break
+            logger.info('Pool balanced, %s', pool_stat_str)
+            pool_balanced = True
 balance_containers.trigger = lambda: scheduler.modify_job(
     'balance_containers', next_run_time=datetime.now())
 
@@ -226,6 +220,7 @@ class WharfServer(ServerAdapter):
         # For our purposes, neither is notable.
         logging.getLogger('apscheduler.scheduler').setLevel(logging.ERROR)
         logging.getLogger('apscheduler.executors.default').setLevel(logging.ERROR)
+        logger.info('Initializing pool, ready for checkout')
         waitress.serve(handler, host=self.host, port=self.port, threads=pool_size * 2)
         checkin('all')
         containers = interactions.containers()

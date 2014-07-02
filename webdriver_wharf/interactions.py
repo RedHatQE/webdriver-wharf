@@ -70,7 +70,7 @@ def create_container(image):
         session.add(container)
         session.expire_on_commit = False
 
-    logger.info('Container %s created', name)
+    logger.info('Container %s created (id: %s)', name, container_id)
     return container
 
 
@@ -160,7 +160,7 @@ def cleanup(image, max_checkout_time=86400):
 
 
 def pull(image):
-    logger.info('Pulling image {} (this could take a while)'.format(image))
+    logger.info('Pulling image {} -- this could take a while'.format(image))
     # Add in some newlines so we can iterate over the concatenated json
     output = client.pull(image).replace('}{', '}\r\n{')
     # Check the docker output when running a command, explode if needed
@@ -176,6 +176,8 @@ def pull(image):
                 logger.debug('{id}: {status}'.format(**out))
         except:
             pass
+
+    logger.info('Pulled image "%s" (docker id: %s)', image, image_id(image)[:12])
 
 
 def containers():
