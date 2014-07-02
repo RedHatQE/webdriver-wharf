@@ -122,7 +122,7 @@ def destroy(container):
 
 def destroy_all():
     c = containers()
-    logger.info('Destroying %d containers', len(containers))
+    logger.info('Destroying %d containers', len(c))
     map(destroy, c)
 
 
