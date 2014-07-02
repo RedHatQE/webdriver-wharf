@@ -1,13 +1,11 @@
 import logging
 import os
-import pprint
 from datetime import datetime
 from time import sleep
 
 import waitress
 from apscheduler.schedulers.background import BackgroundScheduler
 from bottle import Bottle, ServerAdapter, request
-#from gunicorn.glogging import Logger
 from pytz import utc
 
 from webdriver_wharf import db, interactions, lock
@@ -100,8 +98,7 @@ def pull():
 def status(container_name=None):
     if container_name is None:
         containers = interactions.containers()
-        status = {container.name: container_info(container) for container in containers}
-        return '<pre>%s</pre>' % pprint.pformat(status, indent=2)
+        return {container.name: container_info(container) for container in containers}
     else:
         container = db.Container.from_name(container_name)
         if container:
