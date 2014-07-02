@@ -1,0 +1,11 @@
+[Unit]
+Description=WebDriver Wharf
+Requires=docker
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/webdriver-wharf
+
+[Install]
+WantedBy=multi-user.target
+
