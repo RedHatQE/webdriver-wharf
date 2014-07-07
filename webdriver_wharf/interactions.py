@@ -112,8 +112,9 @@ def start(container):
             break
         except:
             logger.debug('port %d not yet open, sleeping...' % container.webdriver_port)
-            if tries >= 10:
-                logger.warning('Container %s failed to start selenium', container.name)
+            if tries >= 40:
+                logger.warning('Container %s failed to start selenium, attempting to destroy it',
+                    container.name)
                 destroy(container)
                 # Should probably actually respond with something useful, but at least this
                 # will blow up the test runner and not the wharf
