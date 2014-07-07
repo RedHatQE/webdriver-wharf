@@ -27,6 +27,7 @@ _ssh_port_offset = 2200 - _wd_port_start
 client = Client()
 logger = logging.getLogger(__name__)
 container_pool_size = 4
+last_pulled_image_id = None
 
 
 @contextmanager
@@ -181,7 +182,6 @@ def cleanup(image, max_checkout_time=86400):
 
 
 def pull(image):
-    logger.info('Pulling image {} -- this could take a while'.format(image))
     # Add in some newlines so we can iterate over the concatenated json
     output = client.pull(image).replace('}{', '}\r\n{')
     # Check the docker output when running a command, explode if needed
@@ -198,7 +198,13 @@ def pull(image):
         except:
             pass
 
-    logger.info('Pulled image "%s" (docker id: %s)', image, image_id(image)[:12])
+    pulled_image_id = image_id(image)[:12]
+    if pulled_image_id != last_pulled_image_id:
+        global last_pulled_image_id
+        last_pulled_image_id = pulled_image_id
+        logger.info('Pulled image "%s" (docker id: %s)', image, pulled_image_id)
+        # flag to indicate pulled image is new
+        return True
 
 
 def containers():

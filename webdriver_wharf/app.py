@@ -141,9 +141,9 @@ scheduler = BackgroundScheduler({
 @scheduler.scheduled_job('interval', id='pull_latest_image', hours=1, timezone=utc)
 def pull_latest_image():
     # Try to pull a new image
-    interactions.pull(image_name)
-    # Trigger a rebalance to deal with any reaping that needs to take place
-    balance_containers.trigger()
+    if interactions.pull(image_name):
+        # If we got a new image, trigger a rebalance
+        balance_containers.trigger()
 pull_latest_image.trigger = lambda: scheduler.modify_job(
     'pull_latest_image', next_run_time=datetime.now())
 
@@ -213,7 +213,8 @@ class WharfServer(ServerAdapter):
         version = require("webdriver-wharf")[0].version
         logger.info('version %s', version)
         # Before doing anything else, grab the image or explode
-        pull_latest_image()
+        logger.info('Pulling image %s -- this could take a while', image_name)
+        interactions.pull(image_name)
         scheduler.start()
         balance_containers.trigger()
         # Give the scheduler and executor a nice cool glass of STFU
