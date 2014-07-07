@@ -158,7 +158,7 @@ def cleanup(image, max_checkout_time=86400):
                 (datetime.utcnow() - container.checked_out).total_seconds() > max_checkout_time):
             logger.info('Container %s checkout out longer than %d seconds, forcing checkin',
                 container.name, max_checkout_time)
-            checkin(container.name)
+            checkin(container)
 
         if not is_checked_out(container) and container.image_id != image_id(image):
             logger.info('Container %s running an old image', container.name)
