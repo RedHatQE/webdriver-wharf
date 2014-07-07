@@ -38,6 +38,7 @@ class Container(Base):
             yield (column.name, getattr(self, column.name))
 
     def __repr__(self):
+        # e.g. "<webdriver_wharf.db.Container 'crazy_ivan'>"
         return "<%s.%s '%s'>" % (__name__, type(self).__name__, self.name)
 
     def __eq__(self, other):

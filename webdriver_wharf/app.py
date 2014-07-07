@@ -84,7 +84,6 @@ def checkin(container_name):
         container = db.Container.from_name(container_name)
         if container:
             interactions.checkin(container)
-
     balance_containers.trigger()
 
 

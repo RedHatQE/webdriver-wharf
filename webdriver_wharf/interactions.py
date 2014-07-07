@@ -183,6 +183,8 @@ def cleanup(image, max_checkout_time=86400):
 
 
 def pull(image):
+    global last_pulled_image_id
+
     # Add in some newlines so we can iterate over the concatenated json
     output = client.pull(image).replace('}{', '}\r\n{')
     # Check the docker output when running a command, explode if needed
@@ -201,7 +203,6 @@ def pull(image):
 
     pulled_image_id = image_id(image)[:12]
     if pulled_image_id != last_pulled_image_id:
-        global last_pulled_image_id
         # TODO: Add a config flag on this so we aren't rudely deleting peoples' images
         #       if they aren't tracking a tag
         with apierror_squasher():
