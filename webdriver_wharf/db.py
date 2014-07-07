@@ -51,6 +51,15 @@ class Container(Base):
         # Id is hex, use it to make Containers hashable
         return int(self.id, 16)
 
+    def __cmp__(self, other):
+        # containers are sortable, oldest first
+        if isinstance(other, Container):
+            # containers are sortable by their creation time
+            return cmp(self.created, other.created)
+        else:
+            # if other isn't a container, assume it is a datetime
+            return cmp(self.created, other)
+
     @property
     def port_bindings(self):
         return {

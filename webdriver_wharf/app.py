@@ -177,7 +177,7 @@ def balance_containers():
             # prevent stopping a container currently being checked out
             if containers_to_stop > 0:
                 logger.debug('%d containers to stop', containers_to_stop)
-                oldest_container = sorted(pool, key=lambda c: c.created)[0]
+                oldest_container = sorted(pool)[0]
                 latest_image_id = interactions.image_id(image_name)
                 logger.info('Pool %s, removing oldest container %s',
                     pool_stat_str, oldest_container.name)
@@ -191,7 +191,8 @@ def balance_containers():
         if containers_to_start > 0:
             logger.debug('%d containers to start', containers_to_start)
             if not_running:
-                container_to_start = not_running.pop()
+                # Start the newest stopped container
+                container_to_start = sorted(not_running)[-1]
             else:
                 container_to_start = interactions.create_container(image_name)
             logger.info('Pool %s, adding container %s',
