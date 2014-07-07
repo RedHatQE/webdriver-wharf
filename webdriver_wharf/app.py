@@ -140,15 +140,16 @@ scheduler = BackgroundScheduler({
 
 @scheduler.scheduled_job('interval', id='pull_latest_image', hours=1, timezone=utc)
 def pull_latest_image():
+    # Try to pull a new image
     interactions.pull(image_name)
+    # Trigger a rebalance to deal with any reaping that needs to take place
+    balance_containers.trigger()
 pull_latest_image.trigger = lambda: scheduler.modify_job(
     'pull_latest_image', next_run_time=datetime.now())
 
 
-@scheduler.scheduled_job('interval', id='balance_containers', hours=1, timezone=utc)
+@scheduler.scheduled_job('interval', id='balance_containers', hours=6, timezone=utc)
 def balance_containers():
-    global pool
-
     # Clean up before interacting with the pool
     interactions.cleanup(image_name, max_checkout_time)
 
