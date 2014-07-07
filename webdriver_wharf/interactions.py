@@ -9,10 +9,11 @@ import logging
 import json
 import time
 import urllib
+from contextlib import contextmanager
 from datetime import datetime
 from itertools import count
 
-import docker
+from docker import Client, errors
 
 from webdriver_wharf import db, lock
 
@@ -22,9 +23,22 @@ _wd_port_start = 4900
 _vnc_port_offset = 5900 - _wd_port_start
 _ssh_port_offset = 2200 - _wd_port_start
 
-client = docker.Client()
+# docker client is localhost only for now
+client = Client()
 logger = logging.getLogger(__name__)
 container_pool_size = 4
+
+
+@contextmanager
+def apierror_squasher():
+    try:
+        yield
+    except errors.APIError as ex:
+        err_tpl = 'Docker APIError Caught: %s'
+        if ex.explanation:
+            logger.error(err_tpl, ex.explanation)
+        else:
+            logger.error(err_tpl, ex.args[0])
 
 
 def _next_available_port():
@@ -115,9 +129,10 @@ def stop(container):
 
 
 def destroy(container):
-    client.stop(container.id)
-    client.remove_container(container.id, v=True)
-    logger.info('Container %s destroyed', container.name)
+    with apierror_squasher():
+        client.stop(container.id)
+        client.remove_container(container.id, v=True)
+        logger.info('Container %s destroyed', container.name)
 
 
 def destroy_all():
