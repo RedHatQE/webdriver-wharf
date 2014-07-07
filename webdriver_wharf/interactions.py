@@ -202,6 +202,12 @@ def pull(image):
     pulled_image_id = image_id(image)[:12]
     if pulled_image_id != last_pulled_image_id:
         global last_pulled_image_id
+        # TODO: Add a config flag on this so we aren't rudely deleting peoples' images
+        #       if they aren't tracking a tag
+        with apierror_squasher():
+            # Clean up old images when the tag moves
+            if last_pulled_image_id:
+                client.remove_image(last_pulled_image_id)
         last_pulled_image_id = pulled_image_id
         logger.info('Pulled image "%s" (docker id: %s)', image, pulled_image_id)
         # flag to indicate pulled image is new
