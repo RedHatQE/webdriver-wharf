@@ -150,7 +150,7 @@ pull_latest_image.trigger = lambda: scheduler.modify_job(
 @scheduler.scheduled_job('interval', id='balance_containers', hours=6, timezone=utc)
 def balance_containers():
     # Clean up before interacting with the pool
-    interactions.cleanup(image_name, max_checkout_time)
+    interactions.cleanup(max_checkout_time)
 
     pool_balanced = False
     while not pool_balanced:

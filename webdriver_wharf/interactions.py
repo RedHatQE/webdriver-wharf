@@ -167,7 +167,7 @@ def checkin_all():
             checkin(container)
 
 
-def cleanup(image, max_checkout_time=86400):
+def cleanup(max_checkout_time=86400):
     # checks in containers that are checked out longer than the max lifetime
     # then destroys containers that aren't running if their image is out of date
     for container in containers():
@@ -177,7 +177,7 @@ def cleanup(image, max_checkout_time=86400):
                 container.name, max_checkout_time)
             checkin(container)
 
-        if not is_checked_out(container) and container.image_id != image_id(image):
+        if not is_checked_out(container) and container.image_id != image_id(last_pulled_image_id):
             logger.info('Container %s running an old image', container.name)
             destroy(container)
 
