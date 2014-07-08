@@ -177,13 +177,9 @@ def balance_containers():
             if containers_to_stop > 0:
                 logger.debug('%d containers to stop', containers_to_stop)
                 oldest_container = sorted(pool)[0]
-                latest_image_id = interactions.image_id(image_name)
                 logger.info('Pool %s, removing oldest container %s',
                     pool_stat_str, oldest_container.name)
                 interactions.stop(oldest_container)
-                if oldest_container.image_id != latest_image_id:
-                    # destroy containers with old image ids
-                    interactions.destroy(oldest_container)
 
         # Starting containers can happen at-will, and shouldn't be done under lock
         # so that checkouts don't have to block unless the pool is exhausted
