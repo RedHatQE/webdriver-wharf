@@ -102,7 +102,7 @@ def start(container):
     # TODO: Something something error checking
     client.start(container.id, privileged=True, port_bindings=container.port_bindings)
 
-    # Before returning, make sure sthe selenium server is accepting requests
+    # Before returning, make sure the selenium server is accepting requests
     tries = 0
     while True:
         try:
