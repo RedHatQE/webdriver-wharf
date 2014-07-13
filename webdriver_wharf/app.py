@@ -14,7 +14,7 @@ pool = set()
 logger = logging.getLogger(__name__)
 image_name = os.environ.get('WEBDRIVER_WHARF_IMAGE', 'cfmeqe/sel_ff_chrome')
 # Number of containers to have on "hot standby" for checkout
-pool_size = os.environ.get('WEBDRIVER_WHARF_POOL_SIZE', 4)
+pool_size = int(os.environ.get('WEBDRIVER_WHARF_POOL_SIZE', 4))
 # Max time for an appliance to be checked out before it's forcibly checked in, in seconds.
 max_checkout_time = os.environ.get('WEBDRIVER_WHARF_MAX_CHECKOUT_TIME', 86400)
 
