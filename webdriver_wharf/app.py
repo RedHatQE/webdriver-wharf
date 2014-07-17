@@ -16,7 +16,7 @@ image_name = os.environ.get('WEBDRIVER_WHARF_IMAGE', 'cfmeqe/sel_ff_chrome')
 # Number of containers to have on "hot standby" for checkout
 pool_size = int(os.environ.get('WEBDRIVER_WHARF_POOL_SIZE', 4))
 # Max time for an appliance to be checked out before it's forcibly checked in, in seconds.
-max_checkout_time = os.environ.get('WEBDRIVER_WHARF_MAX_CHECKOUT_TIME', 3600)
+max_checkout_time = int(os.environ.get('WEBDRIVER_WHARF_MAX_CHECKOUT_TIME', 3600))
 
 application = Bottle(catchall=False)
 
@@ -38,7 +38,9 @@ index_document = """
         vnc_port - integer port number of the VNC server for this webdriver container
         vnc_url - URL that might launch a VNC viewer when clicked
 
-/checkin/[docker_id] - Check in a webdriver container with the given ID
+    Renewal information will also be returned in this mapping, see /renew for more info
+
+/checkin/[container_name] - Check in a webdriver container with the given name
 /checkin/all - Check in all containers
 
     Keep track of the container you checked out, and try to check it back it when you're done.
@@ -46,6 +48,18 @@ index_document = """
     Containers will be automatically checked in after %d seconds.
 
     There should be no expectation that a container will continue to exist after being checked in.
+
+/renew/[container_name]
+
+    Update the expiration time of the named container. The following keys will be included:
+
+        now - current time in seconds from the epoch from the server's point of view
+        expire_time - time in seconds from the epoch when this container will expire
+        expire_interval - time in seconds until expire_time
+
+    now + expire_interval = expire_time
+
+    All three are included to simplify renew implementation on the client side.
 
 /pull - Trigger a docker pull of the configured image
 
@@ -77,7 +91,9 @@ def checkout():
 
     logger.info('Container %s checked out', container.name)
     balance_containers.trigger()
-    return {container.name: container_info(container)}
+    info = container_info(container)
+    info.update(expiry_info(container))
+    return {container.name: info}
 
 
 @application.route('/checkin/<container_name>')
@@ -106,7 +122,7 @@ def renew(container_name):
     if container:
         keepalive(container)
         logger.info('Container %s renewed', container.name)
-        return {'expires': int(time()) + max_checkout_time}
+        return expiry_info(container)
 
 
 @application.route('/status')
@@ -148,6 +164,19 @@ def keepalive(container):
         session.merge(container)
 
 
+def expiry_info(container):
+    # Expiry time for checkout and renew returns
+    # includes 'now' as seen by the wharf in addition to the expire time so
+    # client can choose how to best handle renewals without doing
+    now = int(time())
+    expire_time = now + max_checkout_time
+    return {
+        'now': now,
+        'expire_time': expire_time,
+        'expire_interval': max_checkout_time
+    }
+
+
 # Scheduled tasks use docker for state, so use memory for jobs
 scheduler = BackgroundScheduler({
     'apschedule.jobstores.default': {
@@ -181,19 +210,21 @@ def balance_containers():
     # - checks in containers that are checked out longer than the max lifetime
     # - destroys containers that aren't running if their image is out of date
     for container in interactions.containers():
-        if is_checked_out(container) and (
-                (datetime.utcnow() - container.checked_out).total_seconds() > max_checkout_time):
+        if (is_checked_out(container)
+                and (datetime.utcnow() - container.checked_out).total_seconds() > max_checkout_time
+                and interactions.is_running(container)):
             logger.info('Container %s checkout out longer than %d seconds, forcing stop',
                 container.name, max_checkout_time)
             interactions.stop_async(container)
 
-        if (not is_checked_out(container) and
-                container.image_id != interactions.image_id(interactions.last_pulled_image_id)):
+        if (container.image_id != interactions.image_id(interactions.last_pulled_image_id)
+                and not is_checked_out(container)
+                and interactions.is_running(container)):
             logger.info('Container %s running an old image', container.name)
             interactions.stop_async(container)
             try:
                 pool.remove(container)
-            except:
+            except KeyError:
                 pass
 
     pool_balanced = False
