@@ -213,7 +213,7 @@ def balance_containers():
         if (is_checked_out(container)
                 and (datetime.utcnow() - container.checked_out).total_seconds() > max_checkout_time
                 and interactions.is_running(container)):
-            logger.info('Container %s checkout out longer than %d seconds, forcing stop',
+            logger.info('Container %s checked out longer than %d seconds, forcing stop',
                 container.name, max_checkout_time)
             interactions.stop_async(container)
 

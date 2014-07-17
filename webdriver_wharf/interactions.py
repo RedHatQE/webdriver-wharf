@@ -123,9 +123,10 @@ def start(container):
 
 
 def stop(container):
-    with apierror_squasher():
-        client.stop(container.id, timeout=10)
-        logger.info('Container %s stopped', container.name)
+    if is_running(container):
+        with apierror_squasher():
+            client.stop(container.id, timeout=10)
+            logger.info('Container %s stopped', container.name)
 
 
 def destroy(container):
