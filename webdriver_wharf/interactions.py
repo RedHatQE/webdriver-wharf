@@ -10,8 +10,8 @@ import json
 import time
 import urllib
 from contextlib import contextmanager
-from datetime import datetime
 from itertools import count
+from threading import Thread
 
 from docker import Client, errors
 
@@ -94,10 +94,6 @@ def is_running(container):
     return container_info['State']['Running']
 
 
-def is_checked_out(container):
-    return container.checked_out is not None
-
-
 def start(container):
     # TODO: Something something error checking
     client.start(container.id, privileged=True, port_bindings=container.port_bindings)
@@ -115,7 +111,8 @@ def start(container):
             if tries >= 40:
                 logger.warning('Container %s failed to start selenium, attempting to destroy it',
                     container.name)
-                destroy(container)
+                with lock:
+                    stop(container)
                 # Should probably actually respond with something useful, but at least this
                 # will blow up the test runner and not the wharf
                 return None
@@ -126,60 +123,26 @@ def start(container):
 
 
 def stop(container):
-    client.stop(container.id)
-    logger.info('Container %s stopped', container.name)
+    with apierror_squasher():
+        client.stop(container.id, timeout=10)
+        logger.info('Container %s stopped', container.name)
 
 
 def destroy(container):
+    stop(container)
     with apierror_squasher():
-        client.stop(container.id)
         client.remove_container(container.id, v=True)
         logger.info('Container %s destroyed', container.name)
+
+
+def stop_async(container):
+    Thread(target=stop, args=(container,)).start()
 
 
 def destroy_all():
     c = containers()
     logger.info('Destroying %d containers', len(c))
     map(destroy, c)
-
-
-def checkout(container):
-    if not is_running(container):
-        start(container)
-
-    with db.transaction() as session:
-        container.checked_out = datetime.utcnow()
-        session.merge(container)
-    logger.info('Container %s checked out', container.name)
-
-
-def checkin(container):
-    with db.transaction() as session:
-        container.checked_out = None
-        session.merge(container)
-    logger.info('Container %s checked in', container.name)
-
-
-def checkin_all():
-    logger.info('Checking in all containers')
-    for container in containers():
-        if is_checked_out(container):
-            checkin(container)
-
-
-def cleanup(max_checkout_time=86400):
-    # checks in containers that are checked out longer than the max lifetime
-    # then destroys containers that aren't running if their image is out of date
-    for container in containers():
-        if is_checked_out(container) and (
-                (datetime.utcnow() - container.checked_out).total_seconds() > max_checkout_time):
-            logger.info('Container %s checkout out longer than %d seconds, forcing checkin',
-                container.name, max_checkout_time)
-            checkin(container)
-
-        if not is_checked_out(container) and container.image_id != image_id(last_pulled_image_id):
-            logger.info('Container %s running an old image', container.name)
-            destroy(container)
 
 
 def pull(image):

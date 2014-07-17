@@ -1,7 +1,7 @@
 import logging
 import os
 from datetime import datetime
-from time import sleep
+from time import sleep, time
 
 import waitress
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -16,7 +16,7 @@ image_name = os.environ.get('WEBDRIVER_WHARF_IMAGE', 'cfmeqe/sel_ff_chrome')
 # Number of containers to have on "hot standby" for checkout
 pool_size = int(os.environ.get('WEBDRIVER_WHARF_POOL_SIZE', 4))
 # Max time for an appliance to be checked out before it's forcibly checked in, in seconds.
-max_checkout_time = os.environ.get('WEBDRIVER_WHARF_MAX_CHECKOUT_TIME', 86400)
+max_checkout_time = os.environ.get('WEBDRIVER_WHARF_MAX_CHECKOUT_TIME', 3600)
 
 application = Bottle(catchall=False)
 
@@ -61,17 +61,21 @@ All views return JSON or nothing, and respond to POST and GET verbs
 @application.route('/checkout')
 def checkout():
     if not pool:
-        logger.info('Pool exhausted on checkout, starting new instances')
+        logger.info('Pool exhausted on checkout, waiting for an available container')
         balance_containers.trigger()
 
-    # Sleep until the pool is populated
-    while not pool:
-        sleep(.1)
+    # Sleep until we get a container back
+    while True:
+        try:
+            with lock:
+                container = pool.pop()
+                keepalive(container)
+            break
+        except KeyError:
+            # pool pop blew up, still no containers in the pool
+            sleep(1)
 
-    # Checkout a webdriver URL
-    with lock:
-        container = pool.pop()
-    interactions.checkout(container)
+    logger.info('Container %s checked out', container.name)
     balance_containers.trigger()
     return {container.name: container_info(container)}
 
@@ -79,17 +83,30 @@ def checkout():
 @application.route('/checkin/<container_name>')
 def checkin(container_name):
     if container_name == 'all':
-        interactions.checkin_all()
+        for container in interactions.containers():
+            interactions.stop_async(container)
+            logger.info('All containers checked in')
     else:
         container = db.Container.from_name(container_name)
         if container:
-            interactions.checkin(container)
+            interactions.stop_async(container)
+            logger.info('Container %s checked in', container.name)
     balance_containers.trigger()
 
 
 @application.route('/pull')
 def pull():
     pull_latest_image.trigger()
+    logger.info('Pull latest image triggered')
+
+
+@application.route('/renew/<container_name>')
+def renew(container_name):
+    container = db.Container.from_name(container_name)
+    if container:
+        keepalive(container)
+        logger.info('Container %s renewed', container.name)
+        return {'expires': int(time()) + max_checkout_time}
 
 
 @application.route('/status')
@@ -116,13 +133,19 @@ def container_info(container):
     hostname, __ = host.split(':')
     return {
         'is_running': interactions.is_running(container),
-        'checked_out': interactions.is_checked_out(container),
+        'checked_out': is_checked_out(container),
         'checkin_url': 'http://%s/checkin/%s' % (host, container.name),
         'webdriver_port': container.webdriver_port,
         'webdriver_url': 'http://%s:%d/wd/hub' % (hostname, container.webdriver_port),
         'vnc_port': container.vnc_port,
         'vnc_display': 'vnc://%s:%d' % (hostname, container.vnc_port - 5900)
     }
+
+
+def keepalive(container):
+    with db.transaction() as session:
+        container.checked_out = datetime.utcnow()
+        session.merge(container)
 
 
 # Scheduled tasks use docker for state, so use memory for jobs
@@ -143,14 +166,35 @@ def pull_latest_image():
     if interactions.pull(image_name):
         # If we got a new image, trigger a rebalance
         balance_containers.trigger()
+
 pull_latest_image.trigger = lambda: scheduler.modify_job(
     'pull_latest_image', next_run_time=datetime.now())
 
 
+def is_checked_out(container):
+    return container.checked_out is not None
+
+
 @scheduler.scheduled_job('interval', id='balance_containers', hours=6, timezone=utc)
 def balance_containers():
-    # Clean up before interacting with the pool
-    interactions.cleanup(max_checkout_time)
+    # Clean up before interacting with the pool:
+    # - checks in containers that are checked out longer than the max lifetime
+    # - destroys containers that aren't running if their image is out of date
+    for container in interactions.containers():
+        if is_checked_out(container) and (
+                (datetime.utcnow() - container.checked_out).total_seconds() > max_checkout_time):
+            logger.info('Container %s checkout out longer than %d seconds, forcing stop',
+                container.name, max_checkout_time)
+            interactions.stop_async(container)
+
+        if (not is_checked_out(container) and
+                container.image_id != interactions.image_id(interactions.last_pulled_image_id)):
+            logger.info('Container %s running an old image', container.name)
+            interactions.stop_async(container)
+            try:
+                pool.remove(container)
+            except:
+                pass
 
     pool_balanced = False
     while not pool_balanced:
@@ -161,42 +205,51 @@ def balance_containers():
             containers = interactions.containers()
             running = set(filter(interactions.is_running, containers))
             not_running = containers - running
-            checked_out = set(filter(interactions.is_checked_out, running))
-            checked_in = running - checked_out
+            checked_out = set(filter(is_checked_out, running))
 
             # Reset the global pool based on the current derived state
             pool.clear()
-            pool.update(checked_in)
+            pool.update(running - checked_out)
 
-            pool_stat_str = '%d/%d' % (len(pool), pool_size)
-            containers_to_start = pool_size - len(checked_in)
-            containers_to_stop = len(checked_in) - pool_size
-
-            # Stopping containers needs to be done under the lock to
-            # prevent stopping a container currently being checked out
-            if containers_to_stop > 0:
-                logger.debug('%d containers to stop', containers_to_stop)
-                oldest_container = sorted(pool)[0]
-                logger.info('Pool %s, removing oldest container %s',
-                    pool_stat_str, oldest_container.name)
-                interactions.stop(oldest_container)
+        pool_stat_str = '%d/%d' % (len(pool), pool_size)
+        containers_to_start = pool_size - len(pool)
+        containers_to_stop = len(pool) - pool_size
 
         # Starting containers can happen at-will, and shouldn't be done under lock
         # so that checkouts don't have to block unless the pool is exhausted
         if containers_to_start > 0:
             logger.debug('%d containers to start', containers_to_start)
-            if not_running:
-                # Start the newest stopped container
-                container_to_start = sorted(not_running)[-1]
-            else:
-                container_to_start = interactions.create_container(image_name)
+            container_to_start = interactions.create_container(image_name)
             logger.info('Pool %s, adding container %s',
                 pool_stat_str, container_to_start.name)
             interactions.start(container_to_start)
+            # after starting, continue the loop to ensure that
+            # starting new containers happens before destruction
+            continue
 
-        if not (containers_to_start or containers_to_stop):
-            logger.info('Pool balanced, %s', pool_stat_str)
-            pool_balanced = True
+        # Stopping containers does need to happen under lock to ensure that
+        # simultaneous balance_containers don't attempt to stop the same container
+        # This should be rare, since containers are never returned to the pool,
+        # but can happen if, for example, the configured pool size changes
+        if containers_to_stop > 0:
+            logger.debug('%d containers to stop', containers_to_stop)
+            with lock:
+                oldest_container = sorted(pool)[0]
+                logger.info('Pool %s, removing oldest container %s',
+                    pool_stat_str, oldest_container.name)
+                interactions.stop(oldest_container)
+            # again, continue the loop here to save destroys for last
+            continue
+
+        # after balancing the pool, destroy oldest stopped container
+        if not_running:
+            interactions.destroy(sorted(not_running)[0])
+            continue
+
+        # If we've made it this far...
+        logger.info('Pool balanced, %s', pool_stat_str)
+        pool_balanced = True
+
 balance_containers.trigger = lambda: scheduler.modify_job(
     'balance_containers', next_run_time=datetime.now())
 
