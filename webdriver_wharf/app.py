@@ -145,16 +145,15 @@ def index():
 
 
 def container_info(container):
-    host = request.headers.get('Host')
-    hostname, __ = host.split(':')
+    host = requesting_hostname()
     return {
         'is_running': interactions.is_running(container),
         'checked_out': is_checked_out(container),
         'checkin_url': 'http://%s/checkin/%s' % (host, container.name),
         'webdriver_port': container.webdriver_port,
-        'webdriver_url': 'http://%s:%d/wd/hub' % (hostname, container.webdriver_port),
+        'webdriver_url': 'http://%s:%d/wd/hub' % (host, container.webdriver_port),
         'vnc_port': container.vnc_port,
-        'vnc_display': 'vnc://%s:%d' % (hostname, container.vnc_port - 5900)
+        'vnc_display': 'vnc://%s:%d' % (host, container.vnc_port - 5900)
     }
 
 
@@ -165,16 +164,24 @@ def keepalive(container):
 
 
 def expiry_info(container):
-    # Expiry time for checkout and renew returns
+    # Expiry time for checkout and renew returns, plus renewl url
     # includes 'now' as seen by the wharf in addition to the expire time so
     # client can choose how to best handle renewals without doing
+    host = requesting_hostname()
     now = int(time())
     expire_time = now + max_checkout_time
     return {
+        'renew_url': 'http://%s/renew/%s' % (host, container.name),
         'now': now,
         'expire_time': expire_time,
         'expire_interval': max_checkout_time
     }
+
+
+def requesting_hostname():
+    host = request.headers.get('Host')
+    hostname, __ = host.split(':')
+    return hostname
 
 
 # Scheduled tasks use docker for state, so use memory for jobs
