@@ -150,6 +150,7 @@ def container_info(container):
         'is_running': interactions.is_running(container),
         'checked_out': is_checked_out(container),
         'checkin_url': 'http://%s/checkin/%s' % (host, container.name),
+        'renew_url': 'http://%s/renew/%s' % (host, container.name),
         'webdriver_port': container.webdriver_port,
         'webdriver_url': 'http://%s:%d/wd/hub' % (host, container.webdriver_port),
         'vnc_port': container.vnc_port,
