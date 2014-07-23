@@ -11,7 +11,6 @@ import time
 import urllib
 from contextlib import contextmanager
 from itertools import count
-from threading import Thread
 
 from docker import Client, errors
 
@@ -134,10 +133,6 @@ def destroy(container):
     with apierror_squasher():
         client.remove_container(container.id, v=True)
         logger.info('Container %s destroyed', container.name)
-
-
-def stop_async(container):
-    Thread(target=stop, args=(container,)).start()
 
 
 def destroy_all():

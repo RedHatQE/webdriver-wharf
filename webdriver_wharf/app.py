@@ -1,6 +1,7 @@
 import logging
 import os
 from datetime import datetime
+from threading import Thread
 from time import sleep, time
 
 import waitress
@@ -100,12 +101,12 @@ def checkout():
 def checkin(container_name):
     if container_name == 'all':
         for container in interactions.containers():
-            interactions.stop_async(container)
+            stop_async(container)
             logger.info('All containers checked in')
     else:
         container = db.Container.from_name(container_name)
         if container:
-            interactions.stop_async(container)
+            stop_async(container)
             logger.info('Container %s checked in', container.name)
     balance_containers.trigger()
 
@@ -162,6 +163,21 @@ def keepalive(container):
     with db.transaction() as session:
         container.checked_out = datetime.utcnow()
         session.merge(container)
+
+
+def _stop_async_worker(container):
+    interactions.stop(container)
+    balance_containers.trigger()
+
+
+def stop_async(container):
+    with lock:
+        try:
+            pool.remove(container)
+        except KeyError:
+            pass
+
+    Thread(target=_stop_async_worker, args=(container,)).start()
 
 
 def expiry_info(container):
@@ -223,13 +239,13 @@ def balance_containers():
                 and interactions.is_running(container)):
             logger.info('Container %s checked out longer than %d seconds, forcing stop',
                 container.name, max_checkout_time)
-            interactions.stop_async(container)
+            stop_async(container)
 
         if (container.image_id != interactions.image_id(interactions.last_pulled_image_id)
                 and not is_checked_out(container)
                 and interactions.is_running(container)):
             logger.info('Container %s running an old image', container.name)
-            interactions.stop_async(container)
+            stop_async(container)
             try:
                 pool.remove(container)
             except KeyError:
