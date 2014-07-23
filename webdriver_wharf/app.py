@@ -64,6 +64,8 @@ index_document = """
 
 /pull - Trigger a docker pull of the configured image
 
+/rebalance - Trigger pool balancing, mainly useful in debugging
+
 Behind the scenes, webdriver wharf tries to maintain a pool of containers ready to be checked out.
 It occasionally pulls new images, and will destroy checked-in containers running the old image.
 
@@ -115,6 +117,12 @@ def checkin(container_name):
 def pull():
     pull_latest_image.trigger()
     logger.info('Pull latest image triggered')
+
+
+@application.route('/rebalance')
+def balance():
+    balance_containers.trigger()
+    logger.info('Rebalance triggered')
 
 
 @application.route('/renew/<container_name>')
