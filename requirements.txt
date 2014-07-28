@@ -1,5 +1,5 @@
 appdirs
-apscheduler>=3.0.0b2
+apscheduler>=3
 bottle
 docker-py>=0.4
 pytz
