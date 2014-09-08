@@ -157,6 +157,7 @@ def container_info(container):
     host = requesting_hostname()
     return {
         'is_running': interactions.is_running(container),
+        'image_id': container.image_id,
         'checked_out': is_checked_out(container),
         'checkin_url': 'http://%s/checkin/%s' % (host, container.name),
         'renew_url': 'http://%s/renew/%s' % (host, container.name),
