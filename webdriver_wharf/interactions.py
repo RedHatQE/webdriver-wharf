@@ -20,7 +20,7 @@ from webdriver_wharf import db, lock
 _wd_port_start = 4900
 # Offsets for finding the other ports
 _vnc_port_offset = 5900 - _wd_port_start
-_ssh_port_offset = 2200 - _wd_port_start
+_http_port_offset = 8000 - _wd_port_start
 
 # docker client is localhost only for now
 client = Client()
@@ -45,12 +45,13 @@ def _next_available_port():
     # Get the list of in-use webdriver ports from docker
     # Returns a the lowest port greater than or equal to wd_port_start
     # that isn't currently associated with a docker pid
-    seen_wd_ports = [c.webdriver_port for c in containers()]
+    seen_wd_ports = [(c.webdriver_port, c.http_port, c.vnc_port) for c in containers()]
 
-    for port in count(_wd_port_start):
-        if port not in seen_wd_ports:
-            # TODO: Test all ports here before returning
-            return port
+    for wd_port in count(_wd_port_start):
+        http_port = wd_port + _http_port_offset
+        vnc_port = wd_port + _vnc_port_offset
+        if (wd_port, http_port, vnc_port) not in seen_wd_ports:
+            return wd_port
 
 
 def image_id(image):
@@ -71,14 +72,14 @@ def create_container(image):
     with db.transaction() as session, lock:
         # Use the db lock to ensure next_available_port doesn't return dupes
         webdriver_port = _next_available_port()
-        ssh_port = webdriver_port + _ssh_port_offset
+        http_port = webdriver_port + _http_port_offset
         vnc_port = webdriver_port + _vnc_port_offset
         container = db.Container(
             id=container_id,
             image_id=image_id(image),
             name=name,
             webdriver_port=webdriver_port,
-            ssh_port=ssh_port,
+            http_port=http_port,
             vnc_port=vnc_port
         )
         session.add(container)

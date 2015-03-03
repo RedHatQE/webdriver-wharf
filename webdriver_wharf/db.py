@@ -28,7 +28,7 @@ class Container(Base):
     # Created timestamp to make it easy to destroy oldest containers first
     created = Column(DateTime, default=datetime.utcnow)
     # Exposed ports
-    ssh_port = Column(Integer)
+    http_port = Column(Integer)
     webdriver_port = Column('webdriver_port', Integer)
     vnc_port = Column(Integer)
 
@@ -64,7 +64,7 @@ class Container(Base):
     @property
     def port_bindings(self):
         return {
-            22: self.ssh_port,
+            80: self.http_port,
             4444: self.webdriver_port,
             5999: self.vnc_port,
         }
