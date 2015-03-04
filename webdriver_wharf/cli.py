@@ -2,8 +2,6 @@ import logging
 import os
 import signal
 
-from bottle import run
-
 from webdriver_wharf import app, logging_init
 
 logger = logging.getLogger(__name__)
@@ -24,4 +22,5 @@ def main():
     # handles envvars. Also expose interactions.destroy_all somehow, so wharf can clean
     # up after itself when asked
     logging_init(loglevel)
-    run(app.application, server=app.WharfServer, host=listen_host, port=listen_port, quiet=True)
+    app.application.try_trigger_before_first_request_functions()
+    app.application.run(host=listen_host, port=listen_port)

@@ -1,12 +1,12 @@
 import logging
 import os
 from datetime import datetime
+from pkg_resources import require
 from threading import Thread
 from time import sleep, time
 
-import waitress
 from apscheduler.schedulers.background import BackgroundScheduler
-from bottle import Bottle, ServerAdapter, request
+from flask import Flask, jsonify, request
 from pytz import utc
 
 from webdriver_wharf import db, interactions, lock
@@ -18,8 +18,9 @@ image_name = os.environ.get('WEBDRIVER_WHARF_IMAGE', 'cfmeqe/sel_ff_chrome')
 pool_size = int(os.environ.get('WEBDRIVER_WHARF_POOL_SIZE', 4))
 # Max time for an appliance to be checked out before it's forcibly checked in, in seconds.
 max_checkout_time = int(os.environ.get('WEBDRIVER_WHARF_MAX_CHECKOUT_TIME', 3600))
+no_content = ('', 204)
 
-application = Bottle(catchall=False)
+application = Flask('webdriver-wharf')
 
 index_document = """
 <pre>Webdriver Wharf
@@ -96,7 +97,7 @@ def checkout():
     balance_containers.trigger()
     info = container_info(container)
     info.update(expiry_info(container))
-    return {container.name: info}
+    return jsonify(**{container.name: info})
 
 
 @application.route('/checkin/<container_name>')
@@ -111,18 +112,21 @@ def checkin(container_name):
             stop_async(container)
             logger.info('Container %s checked in', container.name)
     balance_containers.trigger()
+    return no_content
 
 
 @application.route('/pull')
 def pull():
     pull_latest_image.trigger()
     logger.info('Pull latest image triggered')
+    return no_content
 
 
 @application.route('/rebalance')
 def balance():
     balance_containers.trigger()
     logger.info('Rebalance triggered')
+    return no_content
 
 
 @application.route('/renew/<container_name>')
@@ -131,21 +135,26 @@ def renew(container_name):
     if container:
         keepalive(container)
         logger.info('Container %s renewed', container.name)
-        return expiry_info(container)
+        out = expiry_info(container)
+    else:
+        out = {}
+    return jsonify(**out)
 
 
 @application.route('/status')
+def status():
+    containers = interactions.containers()
+    return jsonify(**{container.name: container_info(container) for container in containers})
+
+
 @application.route('/status/<container_name>')
-def status(container_name=None):
-    if container_name is None:
-        containers = interactions.containers()
-        return {container.name: container_info(container) for container in containers}
+def container_status(container_name):
+    container = db.Container.from_name(container_name)
+    if container:
+        out = {container_name: container_info(container)}
     else:
-        container = db.Container.from_name(container_name)
-        if container:
-            return {container_name: container_info(container)}
-        else:
-            return {}
+        out = {}
+    return jsonify(**out)
 
 
 @application.route('/')
@@ -154,7 +163,9 @@ def index():
 
 
 def container_info(container):
-    host = requesting_hostname()
+    host = requesting_host()
+    host_noport = host.split(':')[0]
+
     return {
         'is_running': interactions.is_running(container),
         'image_id': container.image_id,
@@ -162,9 +173,11 @@ def container_info(container):
         'checkin_url': 'http://%s/checkin/%s' % (host, container.name),
         'renew_url': 'http://%s/renew/%s' % (host, container.name),
         'webdriver_port': container.webdriver_port,
-        'webdriver_url': 'http://%s:%d/wd/hub' % (host, container.webdriver_port),
+        'webdriver_url': 'http://%s:%d/wd/hub' % (host_noport, container.webdriver_port),
         'vnc_port': container.vnc_port,
-        'vnc_display': 'vnc://%s:%d' % (host, container.vnc_port - 5900)
+        'vnc_display': 'vnc://%s:%d' % (host_noport, container.vnc_port - 5900),
+        'http_port': container.http_port,
+        'fileviewer_url': 'http://%s:%d/fileviewer/' % (host_noport, container.http_port),
     }
 
 
@@ -193,7 +206,7 @@ def expiry_info(container):
     # Expiry time for checkout and renew returns, plus renewl url
     # includes 'now' as seen by the wharf in addition to the expire time so
     # client can choose how to best handle renewals without doing
-    host = requesting_hostname()
+    host = requesting_host()
     now = int(time())
     expire_time = now + max_checkout_time
     return {
@@ -204,10 +217,8 @@ def expiry_info(container):
     }
 
 
-def requesting_hostname():
-    host = request.headers.get('Host')
-    hostname, __ = host.split(':')
-    return hostname
+def requesting_host():
+    return request.headers.get('Host')
 
 
 # Scheduled tasks use docker for state, so use memory for jobs
@@ -318,22 +329,23 @@ balance_containers.trigger = lambda: scheduler.modify_job(
     'balance_containers', next_run_time=datetime.now())
 
 
-# starts the scheduler before running the webserver
-class WharfServer(ServerAdapter):
-    def run(self, handler):
-        from pkg_resources import require
-        version = require("webdriver-wharf")[0].version
-        logger.info('version %s', version)
-        # Before doing anything else, grab the image or explode
-        logger.info('Pulling image %s -- this could take a while', image_name)
-        interactions.pull(image_name)
-        scheduler.start()
-        balance_containers.trigger()
-        # Give the scheduler and executor a nice cool glass of STFU
-        # This supresses informational messages about the task be fired by the scheduler,
-        # as well as warnings from the executor that the task is already running.
-        # For our purposes, neither is notable.
-        logging.getLogger('apscheduler.scheduler').setLevel(logging.ERROR)
-        logging.getLogger('apscheduler.executors.default').setLevel(logging.ERROR)
-        logger.info('Initializing pool, ready for checkout')
-        waitress.serve(handler, host=self.host, port=self.port, threads=pool_size * 2)
+# starts the scheduler before handling the first request
+@application.before_first_request
+def _wharf_init():
+    version = require("webdriver-wharf")[0].version
+    logger.info('version %s', version)
+    # Before doing anything else, grab the image or explode
+    logger.info('Pulling image %s -- this could take a while', image_name)
+    interactions.pull(image_name)
+    scheduler.start()
+    balance_containers.trigger()
+    # Give the scheduler and executor a nice cool glass of STFU
+    # This supresses informational messages about the task be fired by the scheduler,
+    # as well as warnings from the executor that the task is already running.
+    # For our purposes, neither is notable.
+    logging.getLogger('apscheduler.scheduler').setLevel(logging.ERROR)
+    logging.getLogger('apscheduler.executors.default').setLevel(logging.ERROR)
+    logger.info('Initializing pool, ready for checkout')
+
+if __name__ == '__main__':
+    application.run()

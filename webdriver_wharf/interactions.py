@@ -5,8 +5,9 @@ The docker client and all methods that work with it live here,
 as well as state tracking between docker and the DB
 
 """
-import logging
 import json
+import logging
+import os
 import time
 import urllib
 from contextlib import contextmanager
@@ -16,18 +17,20 @@ from docker import Client, errors
 
 from webdriver_wharf import db, lock
 
+docker_api_version =  os.environ.get('WEBDRIVER_WHARF_DOCKER_API_VERSION', '1.15')
+
+# TODO: Making these configurable would be good
 # lowest port for webdriver binding
 _wd_port_start = 4900
 # Offsets for finding the other ports
 _vnc_port_offset = 5900 - _wd_port_start
-_http_port_offset = 8000 - _wd_port_start
+_http_port_offset = 6900 - _wd_port_start
 
 # docker client is localhost only for now
-client = Client()
+client = Client(version=docker_api_version)
 logger = logging.getLogger(__name__)
 container_pool_size = 4
 last_pulled_image_id = None
-
 
 @contextmanager
 def apierror_squasher():
@@ -95,8 +98,12 @@ def is_running(container):
 
 
 def start(container):
-    # TODO: Something something error checking
-    client.start(container.id, privileged=True, port_bindings=container.port_bindings)
+    try:
+        client.start(container.id, privileged=True, port_bindings=container.port_bindings)
+    except errors.APIError:
+        # No need to cleanup here since normal balancing will take care of it
+        logger.error('Error starting %s', container.name)
+        return
 
     # Before returning, make sure the selenium server is accepting requests
     tries = 0
@@ -108,9 +115,8 @@ def start(container):
             break
         except:
             logger.debug('port %d not yet open, sleeping...' % container.webdriver_port)
-            if tries >= 40:
-                logger.warning('Container %s failed to start selenium, attempting to destroy it',
-                    container.name)
+            if tries >= 10:
+                logger.warning('Container %s failed to start selenium', container.name)
                 with lock:
                     stop(container)
                 # Should probably actually respond with something useful, but at least this

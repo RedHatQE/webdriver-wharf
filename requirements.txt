@@ -1,7 +1,6 @@
 appdirs
 apscheduler>=3
-bottle
 docker-py>=0.4
+Flask
 pytz
 sqlalchemy
-waitress
