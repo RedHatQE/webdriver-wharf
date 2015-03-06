@@ -180,11 +180,11 @@ def pull(image):
 def containers():
     containers = set()
     # Get all the docker containers that the DB knows about
-    for container_id in [_dgci(c, 'id') for c in client.containers(all=True, trunc=False)]:
-        name = _name(client.inspect_container(container_id))
-        container = db.Container.from_name(name)
+    for docker_info in client.containers(all=True, trunc=False):
+        container_id = _dgci(docker_info, 'id')
+        container = db.Container.from_id(container_id)
         if container is None:
-            logger.debug("Container %s isn't in the DB; ignored", name)
+            logger.debug("Container %s isn't in the DB; ignored", id)
             continue
 
         containers.add(container)
@@ -193,7 +193,8 @@ def containers():
     with db.transaction() as session:
         for db_container in session.query(db.Container).all():
             if db_container not in containers:
-                logger.debug('Container %s no longer exists, removing from DB', db_container.name)
+                logger.debug('Container %s (%s) no longer exists, removing from DB',
+                    db_container.name, db_container.id)
                 session.delete(db_container)
     return containers
 
