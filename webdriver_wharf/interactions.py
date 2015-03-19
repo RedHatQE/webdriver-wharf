@@ -102,7 +102,7 @@ def start(container):
         client.start(container.id, privileged=True, port_bindings=container.port_bindings)
     except errors.APIError:
         # No need to cleanup here since normal balancing will take care of it
-        logger.error('Error starting %s', container.name)
+        logger.warning('Error starting %s', container.name)
         return
 
     # Before returning, make sure the selenium server is accepting requests

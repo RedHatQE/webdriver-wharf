@@ -177,7 +177,7 @@ def container_info(container):
         'vnc_port': container.vnc_port,
         'vnc_display': 'vnc://%s:%d' % (host_noport, container.vnc_port - 5900),
         'http_port': container.http_port,
-        'fileviewer_url': 'http://%s:%d/fileviewer/' % (host_noport, container.http_port),
+        'fileviewer_url': 'http://%s:%d/' % (host_noport, container.http_port),
     }
 
 
