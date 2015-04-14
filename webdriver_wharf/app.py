@@ -293,11 +293,12 @@ def balance_containers():
         # Starting containers can happen at-will, and shouldn't be done under lock
         # so that checkouts don't have to block unless the pool is exhausted
         if containers_to_start > 0:
-            logger.debug('%d containers to start', containers_to_start)
-            container_to_start = interactions.create_container(image_name)
-            logger.info('Pool %s, adding container %s',
-                pool_stat_str, container_to_start.name)
-            interactions.start(container_to_start)
+            logger.info('Pool %s, adding %d containers', pool_stat_str, containers_to_start)
+            new_containers = []
+            for __ in range(containers_to_start):
+                new_container = interactions.create_container(image_name)
+                new_containers.append(new_container)
+            interactions.start(*new_containers)
             # after starting, continue the loop to ensure that
             # starting new containers happens before destruction
             continue

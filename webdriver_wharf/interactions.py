@@ -12,12 +12,19 @@ import time
 import urllib
 from contextlib import contextmanager
 from itertools import count
+from threading import Thread
 
 from docker import Client, errors
 
 from webdriver_wharf import db, lock
 
-docker_api_version =  os.environ.get('WEBDRIVER_WHARF_DOCKER_API_VERSION', '1.15')
+docker_api_version = os.environ.get('WEBDRIVER_WHARF_DOCKER_API_VERSION', '1.15')
+
+try:
+    start_timeout = int(os.environ.get('WEBDRIVER_WHARF_START_TIMEOUT', 60))
+except (TypeError, ValueError):
+    print 'WEBDRIVER_WHARF_START_TIMEOUT must be an integer, defaulting to 60'
+    start_timeout = 60
 
 # TODO: Making these configurable would be good
 # lowest port for webdriver binding
@@ -31,6 +38,7 @@ client = Client(version=docker_api_version)
 logger = logging.getLogger(__name__)
 container_pool_size = 4
 last_pulled_image_id = None
+
 
 @contextmanager
 def apierror_squasher():
@@ -97,7 +105,20 @@ def is_running(container):
     return container_info['State']['Running']
 
 
-def start(container):
+def start(*containers):
+    thread_pool = []
+    # Thread off the starting/waiting for each container
+    for container in containers:
+        thread = Thread(target=_threaded_start, args=(container,))
+        thread_pool.append(thread)
+        thread.start()
+
+    # Join all the threads before returning
+    for thread in thread_pool:
+        thread.join()
+
+
+def _threaded_start(container):
     try:
         client.start(container.id, privileged=True, port_bindings=container.port_bindings)
     except errors.APIError:
@@ -106,7 +127,7 @@ def start(container):
         return
 
     # Before returning, make sure the selenium server is accepting requests
-    tries = 0
+    start_time = time.time()
     while True:
         try:
             # If we ever support managing remote dockers,
@@ -115,15 +136,12 @@ def start(container):
             break
         except:
             logger.debug('port %d not yet open, sleeping...' % container.webdriver_port)
-            if tries >= 10:
+            if time.time() - start_time > start_timeout:
                 logger.warning('Container %s failed to start selenium', container.name)
                 with lock:
                     stop(container)
-                # Should probably actually respond with something useful, but at least this
-                # will blow up the test runner and not the wharf
-                return None
-            time.sleep(3)
-            tries += 1
+                return
+            time.sleep(1)
 
     logger.info('Container %s started', container.name)
 
