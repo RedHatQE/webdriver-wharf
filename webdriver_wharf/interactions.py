@@ -112,7 +112,14 @@ def start(*containers):
     thread_pool = []
     # Thread off the starting/waiting for each container
     for container in containers:
-        thread = Thread(target=_threaded_start, args=(container,))
+        try:
+            client.start(container.id, privileged=True, port_bindings=container.port_bindings)
+        except errors.APIError:
+            # No need to cleanup here since normal balancing will take care of it
+            logger.warning('Error starting %s', container.name)
+            continue
+
+        thread = Thread(target=_watch_selenium, args=(container,))
         thread_pool.append(thread)
         thread.start()
 
@@ -121,14 +128,7 @@ def start(*containers):
         thread.join()
 
 
-def _threaded_start(container):
-    try:
-        client.start(container.id, privileged=True, port_bindings=container.port_bindings)
-    except errors.APIError:
-        # No need to cleanup here since normal balancing will take care of it
-        logger.warning('Error starting %s', container.name)
-        return
-
+def _watch_selenium(container):
     # Before returning, make sure the selenium server is accepting requests
     start_time = time.time()
     while True:
