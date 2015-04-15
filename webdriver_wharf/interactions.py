@@ -113,9 +113,10 @@ def start(*containers):
         try:
             client.start(container.id, privileged=True, port_bindings=container.port_bindings)
             logger.info('Starting %s', container.name)
-        except errors.APIError:
+        except errors.APIError as exc:
             # No need to cleanup here since normal balancing will take care of it
             logger.warning('Error starting %s', container.name)
+            logger.exception(exc)
             continue
 
         thread = Thread(target=_watch_selenium, args=(container,))
