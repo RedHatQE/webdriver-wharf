@@ -72,8 +72,10 @@ def image_id(image):
         return None
 
 
-def create_container(image):
-    create_info = client.create_container(image, detach=True, tty=True)
+def create_container():
+    if last_pulled_image_id is None:
+        pull()
+    create_info = client.create_container(last_pulled_image_id, detach=True, tty=True)
     container_id = _dgci(create_info, 'id')
     container_info = client.inspect_container(container_id)
     name = _name(container_info)
@@ -85,7 +87,7 @@ def create_container(image):
         vnc_port = webdriver_port + _vnc_port_offset
         container = db.Container(
             id=container_id,
-            image_id=image_id(image),
+            image_id=last_pulled_image_id,
             name=name,
             webdriver_port=webdriver_port,
             http_port=http_port,

@@ -297,7 +297,7 @@ def balance_containers():
                 logger.info('Pool %s, adding %d containers', pool_stat_str, containers_to_start)
                 new_containers = []
                 for __ in range(containers_to_start):
-                    new_container = interactions.create_container(image_name)
+                    new_container = interactions.create_container()
                     new_containers.append(new_container)
                 interactions.start(*new_containers)
                 # after starting, continue the loop to ensure that
