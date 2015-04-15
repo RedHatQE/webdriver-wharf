@@ -127,17 +127,22 @@ def start(*containers):
         thread.join()
 
 
+def check_selenium(container):
+    try:
+        urllib.urlopen('http://localhost:%d' % container.webdriver_port)
+        return True
+    except:
+        return False
+
+
 def _watch_selenium(container):
     # Before returning, make sure the selenium server is accepting requests
     start_time = time.time()
     while True:
-        try:
-            # If we ever support managing remote dockers,
-            # localhost will need to be the docker host instead
-            urllib.urlopen('http://localhost:%d' % container.webdriver_port)
+        if check_selenium(container):
             logger.info('Container %s started', container.name)
-            break
-        except:
+            return
+        else:
             logger.debug('port %d not yet open, sleeping...' % container.webdriver_port)
             if time.time() - start_time > start_timeout:
                 logger.warning('Container %s failed to start selenium', container.name)

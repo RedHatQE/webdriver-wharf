@@ -84,12 +84,14 @@ def checkout():
         logger.info('Pool exhausted on checkout, waiting for an available container')
         balance_containers.trigger()
 
-    # Sleep until we get a container back
+    # Sleep until we get a container back with selenium running
     while True:
         try:
             with lock:
                 container = pool.pop()
                 keepalive(container)
+                if not interactions.check_selenium(container):
+                    continue
             break
         except KeyError:
             # pool pop blew up, still no containers in the pool
