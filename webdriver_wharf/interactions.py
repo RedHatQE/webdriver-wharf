@@ -146,15 +146,13 @@ def start(*containers):
 
 def check_selenium(container):
     try:
-        status = urlopen('http://smyers-hobbes.usersys.redhat.com:4903/wd/hub').getcode()
-        if status == 200:
+        status = urlopen('http://localhost:%d/wd/hub' % container.webdriver_port).getcode()
+        if 200 <= status < 400:
             return True
         else:
             logger.info('selenium on %s responded with %d' % (container.name, status))
             return False
-    except Exception as exc:
-        logger.warning('selenium not running on %s' % container.name)
-        logger.warning(traceback.format_exc().splitlines()[-1])
+    except Exception:
         return False
 
 
