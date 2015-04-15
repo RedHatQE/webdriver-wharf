@@ -166,7 +166,7 @@ def destroy(container):
 def destroy_all():
     # This is not an API function
     destroy_us = containers()
-    print 'Destroying %d containers', len(destroy_us)
+    print 'Destroying %d containers' % len(destroy_us)
     for c in destroy_us:
         print 'Destroying %s' % c.name
         destroy(c)

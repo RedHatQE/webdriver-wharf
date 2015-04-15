@@ -6,8 +6,10 @@ from threading import Thread
 from time import sleep, time
 
 from apscheduler.schedulers.background import BackgroundScheduler
+from docker.errors import APIError
 from flask import Flask, jsonify, request
 from pytz import utc
+from requests.exceptions import RequestException
 
 from webdriver_wharf import db, interactions, lock
 
@@ -271,61 +273,64 @@ def balance_containers():
             except KeyError:
                 pass
 
-    pool_balanced = False
-    while not pool_balanced:
-        # Grabs/releases the lock each time through the loop so checkouts don't have to wait
-        # too long if a container's being destroyed
-        with lock:
-            # Make sure the number of running containers that aren't checked out
-            containers = interactions.containers()
-            running = set(filter(interactions.is_running, containers))
-            not_running = containers - running
-            checked_out = set(filter(is_checked_out, running))
-
-            # Reset the global pool based on the current derived state
-            pool.clear()
-            pool.update(running - checked_out)
-
-        pool_stat_str = '%d/%d' % (len(pool), pool_size)
-        containers_to_start = pool_size - len(pool)
-        containers_to_stop = len(pool) - pool_size
-
-        # Starting containers can happen at-will, and shouldn't be done under lock
-        # so that checkouts don't have to block unless the pool is exhausted
-        if containers_to_start > 0:
-            logger.info('Pool %s, adding %d containers', pool_stat_str, containers_to_start)
-            new_containers = []
-            for __ in range(containers_to_start):
-                new_container = interactions.create_container(image_name)
-                new_containers.append(new_container)
-            interactions.start(*new_containers)
-            # after starting, continue the loop to ensure that
-            # starting new containers happens before destruction
-            continue
-
-        # Stopping containers does need to happen under lock to ensure that
-        # simultaneous balance_containers don't attempt to stop the same container
-        # This should be rare, since containers are never returned to the pool,
-        # but can happen if, for example, the configured pool size changes
-        if containers_to_stop > 0:
-            logger.debug('%d containers to stop', containers_to_stop)
+    try:
+        pool_balanced = False
+        while not pool_balanced:
+            # Grabs/releases the lock each time through the loop so checkouts don't have to wait
+            # too long if a container's being destroyed
             with lock:
-                oldest_container = sorted(pool)[0]
-                logger.info('Pool %s, removing oldest container %s',
-                    pool_stat_str, oldest_container.name)
-                interactions.stop(oldest_container)
-            # again, continue the loop here to save destroys for last
-            continue
+                # Make sure the number of running containers that aren't checked out
+                containers = interactions.containers()
+                running = set(filter(interactions.is_running, containers))
+                not_running = containers - running
+                checked_out = set(filter(is_checked_out, running))
 
-        # after balancing the pool, destroy oldest stopped container
-        if not_running:
-            interactions.destroy(sorted(not_running)[0])
-            continue
+                # Reset the global pool based on the current derived state
+                pool.clear()
+                pool.update(running - checked_out)
 
-        # If we've made it this far...
-        logger.info('Pool balanced, %s', pool_stat_str)
-        pool_balanced = True
+            pool_stat_str = '%d/%d' % (len(pool), pool_size)
+            containers_to_start = pool_size - len(pool)
+            containers_to_stop = len(pool) - pool_size
 
+            # Starting containers can happen at-will, and shouldn't be done under lock
+            # so that checkouts don't have to block unless the pool is exhausted
+            if containers_to_start > 0:
+                logger.info('Pool %s, adding %d containers', pool_stat_str, containers_to_start)
+                new_containers = []
+                for __ in range(containers_to_start):
+                    new_container = interactions.create_container(image_name)
+                    new_containers.append(new_container)
+                interactions.start(*new_containers)
+                # after starting, continue the loop to ensure that
+                # starting new containers happens before destruction
+                continue
+
+            # Stopping containers does need to happen under lock to ensure that
+            # simultaneous balance_containers don't attempt to stop the same container
+            # This should be rare, since containers are never returned to the pool,
+            # but can happen if, for example, the configured pool size changes
+            if containers_to_stop > 0:
+                logger.debug('%d containers to stop', containers_to_stop)
+                with lock:
+                    oldest_container = sorted(pool)[0]
+                    logger.info('Pool %s, removing oldest container %s',
+                        pool_stat_str, oldest_container.name)
+                    interactions.stop(oldest_container)
+                # again, continue the loop here to save destroys for last
+                continue
+
+            # after balancing the pool, destroy oldest stopped container
+            if not_running:
+                interactions.destroy(sorted(not_running)[0])
+                continue
+
+            # If we've made it this far...
+            logger.info('Pool balanced, %s', pool_stat_str)
+            pool_balanced = True
+    except (APIError, RequestException) as exc:
+        logger.error('%s while balancing containers, retrying.' % type(exc).__name__)
+        logger.exception(exc)
 balance_containers.trigger = lambda: scheduler.modify_job(
     'balance_containers', next_run_time=datetime.now())
 
