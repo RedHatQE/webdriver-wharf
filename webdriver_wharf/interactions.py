@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import time
+import traceback
 from contextlib import contextmanager
 from itertools import count
 from urllib import urlopen
@@ -139,16 +140,21 @@ def start(*containers):
         thread = Thread(target=_watch_selenium, args=(container,))
         thread_pool.append(thread)
         thread.start()
-
-    # Join all the threads before returning
     for thread in thread_pool:
         thread.join()
 
 
 def check_selenium(container):
     try:
-        return urlopen('http://smyers-hobbes.usersys.redhat.com:4903/wd/hub').getcode() == 200
-    except Exception:
+        status = urlopen('http://smyers-hobbes.usersys.redhat.com:4903/wd/hub').getcode()
+        if status == 200:
+            return True
+        else:
+            logger.info('selenium on %s responded with %d' % (container.name, status))
+            return False
+    except Exception as exc:
+        logger.warning('selenium not running on %s' % container.name)
+        logger.warning(traceback.format_exc().splitlines()[-1])
         return False
 
 
@@ -164,7 +170,7 @@ def _watch_selenium(container):
             if time.time() - start_time > start_timeout:
                 logger.warning('Container %s failed to start selenium', container.name)
                 return
-            time.sleep(1)
+            time.sleep(10)
 
 
 def stop(container):
