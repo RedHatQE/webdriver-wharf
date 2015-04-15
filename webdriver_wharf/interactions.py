@@ -32,7 +32,7 @@ _vnc_port_offset = 5900 - _wd_port_start
 _http_port_offset = 6900 - _wd_port_start
 
 # docker client is localhost only for now
-client = AutoVersionClient(timeout=20)
+client = AutoVersionClient(timeout=120)
 logger = logging.getLogger(__name__)
 container_pool_size = 4
 last_pulled_image_id = None
