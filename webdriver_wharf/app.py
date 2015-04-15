@@ -275,9 +275,9 @@ def balance_containers():
         if not interactions.check_selenium(container):
             stop_async(container)
 
-    try:
-        pool_balanced = False
-        while not pool_balanced:
+    pool_balanced = False
+    while not pool_balanced:
+        try:
             # Grabs/releases the lock each time through the loop so checkouts don't have to wait
             # too long if a container's being destroyed
             with lock:
@@ -330,9 +330,9 @@ def balance_containers():
             # If we've made it this far...
             logger.info('Pool balanced, %s', pool_stat_str)
             pool_balanced = True
-    except (APIError, RequestException) as exc:
-        logger.error('%s while balancing containers, retrying.' % type(exc).__name__)
-        logger.exception(exc)
+        except (APIError, RequestException) as exc:
+            logger.error('%s while balancing containers, retrying.' % type(exc).__name__)
+            logger.exception(exc)
 balance_containers.trigger = lambda: scheduler.modify_job(
     'balance_containers', next_run_time=datetime.now())
 
