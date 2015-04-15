@@ -272,6 +272,10 @@ def balance_containers():
                 logger.info('Container %s running an old image', container.name)
                 stop_async(container)
 
+            if not interactions.check_selenium(container):
+                logger.info('Container %s not running selenium', container.name)
+                stop_async(container)
+
         pool_balanced = False
         while not pool_balanced:
             # Grabs/releases the lock each time through the loop so checkouts don't have to wait
