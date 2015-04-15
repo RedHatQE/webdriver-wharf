@@ -254,30 +254,31 @@ def is_checked_out(container):
 
 @scheduler.scheduled_job('interval', id='balance_containers', hours=6, timezone=utc)
 def balance_containers():
-    # Clean up before interacting with the pool:
-    # - checks in containers that are checked out longer than the max lifetime
-    # - destroys containers that aren't running if their image is out of date
-    # - removes containers from the pool not running selenium
-    for container in interactions.containers():
-        if (is_checked_out(container)
-                and (datetime.utcnow() - container.checked_out).total_seconds() > max_checkout_time
-                and interactions.is_running(container)):
-            logger.info('Container %s checked out longer than %d seconds, forcing stop',
-                container.name, max_checkout_time)
-            stop_async(container)
+    try:
+        # Clean up before interacting with the pool:
+        # - checks in containers that are checked out longer than the max lifetime
+        # - destroys containers that aren't running if their image is out of date
+        # - removes containers from the pool not running selenium
+        for container in interactions.containers():
+            if (is_checked_out(container)
+                    and ((datetime.utcnow() - container.checked_out).total_seconds()
+                        > max_checkout_time)
+                    and interactions.is_running(container)):
+                logger.info('Container %s checked out longer than %d seconds, forcing stop',
+                    container.name, max_checkout_time)
+                stop_async(container)
 
-        if (container.image_id != interactions.image_id(interactions.last_pulled_image_id)
-                and not is_checked_out(container)
-                and interactions.is_running(container)):
-            logger.info('Container %s running an old image', container.name)
-            stop_async(container)
+            if (container.image_id != interactions.image_id(interactions.last_pulled_image_id)
+                    and not is_checked_out(container)
+                    and interactions.is_running(container)):
+                logger.info('Container %s running an old image', container.name)
+                stop_async(container)
 
-        if not interactions.check_selenium(container):
-            stop_async(container)
+            if not interactions.check_selenium(container):
+                stop_async(container)
 
-    pool_balanced = False
-    while not pool_balanced:
-        try:
+        pool_balanced = False
+        while not pool_balanced:
             # Grabs/releases the lock each time through the loop so checkouts don't have to wait
             # too long if a container's being destroyed
             with lock:
@@ -330,9 +331,10 @@ def balance_containers():
             # If we've made it this far...
             logger.info('Pool balanced, %s', pool_stat_str)
             pool_balanced = True
-        except (APIError, RequestException) as exc:
-            logger.error('%s while balancing containers, retrying.' % type(exc).__name__)
-            logger.exception(exc)
+    except (APIError, RequestException) as exc:
+        logger.error('%s while balancing containers, retrying.' % type(exc).__name__)
+        logger.exception(exc)
+        balance_containers.trigger()
 balance_containers.trigger = lambda: scheduler.modify_job(
     'balance_containers', next_run_time=datetime.now())
 
