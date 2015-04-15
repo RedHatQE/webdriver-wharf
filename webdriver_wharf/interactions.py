@@ -9,11 +9,11 @@ import json
 import logging
 import os
 import time
-import urllib
 from contextlib import contextmanager
 from itertools import count
 from threading import Thread
 
+import requests
 from docker import AutoVersionClient, errors
 
 from webdriver_wharf import db, lock
@@ -98,21 +98,35 @@ def create_container(image):
     return container
 
 
-def is_running(container):
-    with apierror_squasher():
-        container_info = client.inspect_container(container.id)
-        return container_info['State']['Running']
-    # APIError means container didn't exist, so it definitely isn't running
-    return False
+def running(*containers_to_filter):
+    # container filter function
+    # can be used to check if a single container is running by passing
+    # only one container, since it returns a set of passed-in containers
+    # that are currently running. If passed all containers, an 'in'
+    # check can be used to see if a container is running.
+    containers_info = docker_info()
+    running_containers = set()
+    if not containers_to_filter:
+        containers_to_filter = containers()
+    for container in containers_to_filter:
+        if container.id in containers_info:
+            c = containers_info[container.id]
+            # docker does have a state value we can check, but not
+            # without inspecting the container, resulting in another api
+            # call to docker. For now, we're backing on the apparent
+            # fact the docker doesn't forward ports to stopped containers
+            if c['Ports']:
+                running_containers.add(container)
+    return running_containers
 
 
 def start(*containers):
+    if containers:
+        logger.info('Starting %d containers' % len(containers))
     thread_pool = []
-    # Thread off the starting/waiting for each container
     for container in containers:
         try:
             client.start(container.id, privileged=True, port_bindings=container.port_bindings)
-            logger.info('Starting %s', container.name)
         except errors.APIError as exc:
             # No need to cleanup here since normal balancing will take care of it
             logger.warning('Error starting %s', container.name)
@@ -130,9 +144,11 @@ def start(*containers):
 
 def check_selenium(container):
     try:
-        urllib.urlopen('http://localhost:%d' % container.webdriver_port)
+        resp = requests.get('http://localhost:%d/wd/hub/' % container.webdriver_port, timeout=10)
+        if resp.status_code != 200:
+            logger.info(str(resp))
         return True
-    except:
+    except Exception:
         return False
 
 
@@ -147,14 +163,12 @@ def _watch_selenium(container):
             logger.debug('port %d not yet open, sleeping...' % container.webdriver_port)
             if time.time() - start_time > start_timeout:
                 logger.warning('Container %s failed to start selenium', container.name)
-                with lock:
-                    stop(container)
                 return
             time.sleep(1)
 
 
 def stop(container):
-    if is_running(container):
+    if running(container):
         with apierror_squasher():
             client.stop(container.id, timeout=10)
             logger.info('Container %s stopped', container.name)
@@ -205,16 +219,18 @@ def pull(image):
         return True
 
 
+def docker_info():
+    return {_dgci(c, 'id'): c for c in client.containers(all=True, trunc=False)}
+
+
 def containers():
     containers = set()
     # Get all the docker containers that the DB knows about
-    for docker_info in client.containers(all=True, trunc=False):
-        container_id = _dgci(docker_info, 'id')
+    for container_id in docker_info():
         container = db.Container.from_id(container_id)
         if container is None:
             logger.debug("Container %s isn't in the DB; ignored", id)
             continue
-
         containers.add(container)
 
     # Clean container out of the DB that docker doesn't know about

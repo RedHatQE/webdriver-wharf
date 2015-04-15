@@ -147,7 +147,7 @@ def renew(container_name):
 
 @application.route('/status')
 def status():
-    containers = interactions.containers()
+    containers = interactions.running()
     return jsonify(**{container.name: container_info(container) for container in containers})
 
 
@@ -171,7 +171,7 @@ def container_info(container):
     host_noport = host.split(':')[0]
 
     return {
-        'is_running': interactions.is_running(container),
+        'is_running': bool(interactions.running(container)),
         'image_id': container.image_id,
         'checked_out': is_checked_out(container),
         'checkin_url': 'http://%s/checkin/%s' % (host, container.name),
@@ -257,24 +257,19 @@ def balance_containers():
     try:
         # Clean up before interacting with the pool:
         # - checks in containers that are checked out longer than the max lifetime
-        # - destroys containers that aren't running if their image is out of date
-        # - removes containers from the pool not running selenium
+        # - stops containers that aren't running if their image is out of date
+        # - stops containers from the pool not running selenium
         for container in interactions.containers():
-            if (is_checked_out(container)
-                    and ((datetime.utcnow() - container.checked_out).total_seconds()
-                        > max_checkout_time)
-                    and interactions.is_running(container)):
+            if (is_checked_out(container) and (
+                    (datetime.utcnow() - container.checked_out).total_seconds()
+                    > max_checkout_time)):
                 logger.info('Container %s checked out longer than %d seconds, forcing stop',
                     container.name, max_checkout_time)
                 stop_async(container)
 
             if (container.image_id != interactions.image_id(interactions.last_pulled_image_id)
-                    and not is_checked_out(container)
-                    and interactions.is_running(container)):
+                    and not is_checked_out(container)):
                 logger.info('Container %s running an old image', container.name)
-                stop_async(container)
-
-            if not interactions.check_selenium(container):
                 stop_async(container)
 
         pool_balanced = False
@@ -284,7 +279,7 @@ def balance_containers():
             with lock:
                 # Make sure the number of running containers that aren't checked out
                 containers = interactions.containers()
-                running = set(filter(interactions.is_running, containers))
+                running = interactions.running(*containers)
                 not_running = containers - running
                 checked_out = set(filter(is_checked_out, running))
 
