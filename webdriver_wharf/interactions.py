@@ -11,9 +11,9 @@ import os
 import time
 from contextlib import contextmanager
 from itertools import count
+from urllib import urlopen
 from threading import Thread
 
-import requests
 from docker import AutoVersionClient, errors
 
 from webdriver_wharf import db, lock
@@ -72,10 +72,11 @@ def image_id(image):
         return None
 
 
-def create_container():
+def create_container(image_name):
     if last_pulled_image_id is None:
         pull()
-    create_info = client.create_container(last_pulled_image_id, detach=True, tty=True)
+
+    create_info = client.create_container(image_name, detach=True, tty=True)
     container_id = _dgci(create_info, 'id')
     container_info = client.inspect_container(container_id)
     name = _name(container_info)
@@ -146,10 +147,7 @@ def start(*containers):
 
 def check_selenium(container):
     try:
-        resp = requests.get('http://localhost:%d/wd/hub/' % container.webdriver_port, timeout=10)
-        if resp.status_code != 200:
-            logger.info(str(resp))
-        return True
+        return urlopen('http://smyers-hobbes.usersys.redhat.com:4903/wd/hub').getcode() == 200
     except Exception:
         return False
 
