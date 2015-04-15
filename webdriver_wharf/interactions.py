@@ -116,9 +116,9 @@ def running(*containers_to_filter):
             c = containers_info[container.id]
             # docker does have a state value we can check, but not
             # without inspecting the container, resulting in another api
-            # call to docker. For now, we're backing on the apparent
-            # fact the docker doesn't forward ports to stopped containers
-            if c['Ports']:
+            # call to docker. If ports are forwarded and we see "up" in
+            # the container status, we should be good to go
+            if c['Ports'] and 'up' in str(c['Status']).lower():
                 running_containers.add(container)
     return running_containers
 
