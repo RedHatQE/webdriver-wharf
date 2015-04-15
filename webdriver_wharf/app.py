@@ -257,6 +257,7 @@ def balance_containers():
     # Clean up before interacting with the pool:
     # - checks in containers that are checked out longer than the max lifetime
     # - destroys containers that aren't running if their image is out of date
+    # - removes containers from the pool not running selenium
     for container in interactions.containers():
         if (is_checked_out(container)
                 and (datetime.utcnow() - container.checked_out).total_seconds() > max_checkout_time
@@ -270,10 +271,9 @@ def balance_containers():
                 and interactions.is_running(container)):
             logger.info('Container %s running an old image', container.name)
             stop_async(container)
-            try:
-                pool.remove(container)
-            except KeyError:
-                pass
+
+        if not interactions.check_selenium(container):
+            stop_async(container)
 
     try:
         pool_balanced = False
