@@ -14,11 +14,9 @@ from contextlib import contextmanager
 from itertools import count
 from threading import Thread
 
-from docker import Client, errors
+from docker import AutoVersionClient, errors
 
 from webdriver_wharf import db, lock
-
-docker_api_version = os.environ.get('WEBDRIVER_WHARF_DOCKER_API_VERSION', '1.15')
 
 try:
     start_timeout = int(os.environ.get('WEBDRIVER_WHARF_START_TIMEOUT', 60))
@@ -34,7 +32,7 @@ _vnc_port_offset = 5900 - _wd_port_start
 _http_port_offset = 6900 - _wd_port_start
 
 # docker client is localhost only for now
-client = Client(version=docker_api_version)
+client = AutoVersionClient(timeout=20)
 logger = logging.getLogger(__name__)
 container_pool_size = 4
 last_pulled_image_id = None
