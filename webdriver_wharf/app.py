@@ -260,21 +260,23 @@ def balance_containers():
         # - stops containers that aren't running if their image is out of date
         # - stops containers from the pool not running selenium
         for container in interactions.containers():
-            if (is_checked_out(container) and (
-                    (datetime.utcnow() - container.checked_out).total_seconds()
-                    > max_checkout_time)):
-                logger.info('Container %s checked out longer than %d seconds, forcing stop',
-                    container.name, max_checkout_time)
-                stop_async(container)
+            if is_checked_out(container):
+                if ((datetime.utcnow() - container.checked_out).total_seconds()
+                        > max_checkout_time):
+                    logger.info('Container %s checked out longer than %d seconds, forcing stop',
+                        container.name, max_checkout_time)
+                    stop_async(container)
+                    continue
+            else:
+                if container.image_id != interactions.last_pulled_image_id:
+                    logger.info('Container %s running an old image', container.name)
+                    stop_async(container)
+                    continue
 
-            if (container.image_id != interactions.image_id(interactions.last_pulled_image_id)
-                    and not is_checked_out(container)):
-                logger.info('Container %s running an old image', container.name)
-                stop_async(container)
-
-            if not interactions.check_selenium(container):
-                logger.info('Container %s not running selenium', container.name)
-                stop_async(container)
+                if not interactions.check_selenium(container):
+                    logger.info('Container %s not running selenium', container.name)
+                    stop_async(container)
+                    continue
 
         pool_balanced = False
         while not pool_balanced:
