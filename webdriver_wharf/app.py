@@ -109,7 +109,7 @@ def checkin(container_name):
     if container_name == 'all':
         for container in interactions.containers():
             stop_async(container)
-            logger.info('All containers checked in')
+        logger.info('All containers checked in')
     else:
         container = db.Container.from_name(container_name)
         if container:
