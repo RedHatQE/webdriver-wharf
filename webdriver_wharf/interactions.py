@@ -101,7 +101,7 @@ def create_container(image):
 
 
 def is_running(container):
-    with apierror_squasher:
+    with apierror_squasher():
         container_info = client.inspect_container(container.id)
         return container_info['State']['Running']
     # APIError means container didn't exist, so it definitely isn't running
