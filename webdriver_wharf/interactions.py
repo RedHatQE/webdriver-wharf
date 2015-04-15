@@ -114,6 +114,7 @@ def start(*containers):
     for container in containers:
         try:
             client.start(container.id, privileged=True, port_bindings=container.port_bindings)
+            logger.info('Starting %s', container.name)
         except errors.APIError:
             # No need to cleanup here since normal balancing will take care of it
             logger.warning('Error starting %s', container.name)
@@ -136,6 +137,7 @@ def _watch_selenium(container):
             # If we ever support managing remote dockers,
             # localhost will need to be the docker host instead
             urllib.urlopen('http://localhost:%d' % container.webdriver_port)
+            logger.info('Container %s started', container.name)
             break
         except:
             logger.debug('port %d not yet open, sleeping...' % container.webdriver_port)
@@ -145,8 +147,6 @@ def _watch_selenium(container):
                     stop(container)
                 return
             time.sleep(1)
-
-    logger.info('Container %s started', container.name)
 
 
 def stop(container):
@@ -164,9 +164,12 @@ def destroy(container):
 
 
 def destroy_all():
-    c = containers()
-    logger.info('Destroying %d containers', len(c))
-    map(destroy, c)
+    # This is not an API function
+    destroy_us = containers()
+    print 'Destroying %d containers', len(destroy_us)
+    for c in destroy_us:
+        print 'Destroying %s' % c.name
+        destroy(c)
 
 
 def pull(image):
