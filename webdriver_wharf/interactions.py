@@ -9,7 +9,6 @@ import json
 import logging
 import os
 import time
-import traceback
 from contextlib import contextmanager
 from itertools import count
 from urllib import urlopen

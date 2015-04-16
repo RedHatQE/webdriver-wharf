@@ -282,7 +282,7 @@ def balance_containers():
                 containers = interactions.containers()
                 running = interactions.running(*containers)
                 not_running = containers - running
-                checked_out = set(filter(is_checked_out, running))
+                checked_out = set(filter(lambda c: bool(c.checked_out), running))
 
                 # Reset the global pool based on the current derived state
                 pool.clear()
