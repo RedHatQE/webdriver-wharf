@@ -171,9 +171,8 @@ def container_info(container):
     host_noport = host.split(':')[0]
 
     return {
-        'is_running': bool(interactions.running(container)),
         'image_id': container.image_id,
-        'checked_out': is_checked_out(container),
+        'checked_out': container.checked_out,
         'checkin_url': 'http://%s/checkin/%s' % (host, container.name),
         'renew_url': 'http://%s/renew/%s' % (host, container.name),
         'webdriver_port': container.webdriver_port,
@@ -248,10 +247,6 @@ pull_latest_image.trigger = lambda: scheduler.modify_job(
     'pull_latest_image', next_run_time=datetime.now())
 
 
-def is_checked_out(container):
-    return container.checked_out is not None
-
-
 @scheduler.scheduled_job('interval', id='balance_containers', hours=6, timezone=utc)
 def balance_containers():
     try:
@@ -260,7 +255,7 @@ def balance_containers():
         # - stops containers that aren't running if their image is out of date
         # - stops containers from the pool not running selenium
         for container in interactions.containers():
-            if is_checked_out(container):
+            if container.checked_out:
                 if ((datetime.utcnow() - container.checked_out).total_seconds()
                         > max_checkout_time):
                     logger.info('Container %s checked out longer than %d seconds, forcing stop',
