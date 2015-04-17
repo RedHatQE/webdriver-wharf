@@ -260,17 +260,12 @@ def balance_containers():
                         > max_checkout_time):
                     logger.info('Container %s checked out longer than %d seconds, forcing stop',
                         container.name, max_checkout_time)
-                    stop_async(container)
+                    interactions.stop(container)
                     continue
             else:
                 if container.image_id != interactions.last_pulled_image_id:
                     logger.info('Container %s running an old image', container.name)
-                    stop_async(container)
-                    continue
-
-                if not interactions.check_selenium(container):
-                    logger.info('Container %s not running selenium', container.name)
-                    stop_async(container)
+                    interactions.stop(container)
                     continue
 
         pool_balanced = False
@@ -288,13 +283,19 @@ def balance_containers():
                 pool.clear()
                 pool.update(running - checked_out)
 
-            pool_stat_str = '%d/%d' % (len(pool), pool_size)
+            pool_stat_str = '%d/%d - %d checked out - %d to destroy' % (
+                len(pool), pool_size, len(checked_out), len(not_running))
             containers_to_start = pool_size - len(pool)
             containers_to_stop = len(pool) - pool_size
 
             # Starting containers can happen at-will, and shouldn't be done under lock
             # so that checkouts don't have to block unless the pool is exhausted
             if containers_to_start > 0:
+                if containers_to_start > 4:
+                    # limit the number of ocntainers to start so we
+                    # don't spend *too* much time refilling the pool if
+                    # there's more work to be done
+                    containers_to_start = 4
                 logger.info('Pool %s, adding %d containers', pool_stat_str, containers_to_start)
                 new_containers = []
                 for __ in range(containers_to_start):
@@ -320,6 +321,9 @@ def balance_containers():
 
             # after balancing the pool, destroy oldest stopped container
             if not_running:
+                if len(not_running) % 4 == 0:
+                    logger.info('Pool %s' % pool_stat_str)
+
                 interactions.destroy(sorted(not_running)[0])
                 continue
 
