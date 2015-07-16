@@ -20,6 +20,8 @@ image_name = os.environ.get('WEBDRIVER_WHARF_IMAGE', 'cfmeqe/sel_ff_chrome')
 pool_size = int(os.environ.get('WEBDRIVER_WHARF_POOL_SIZE', 4))
 # Max time for an appliance to be checked out before it's forcibly checked in, in seconds.
 max_checkout_time = int(os.environ.get('WEBDRIVER_WHARF_MAX_CHECKOUT_TIME', 3600))
+pull_interval = int(os.environ.get('WEBDRIVER_WHARF_IMAGE_PULL_INTERVAL', 3600))
+rebalance_interval = int(os.environ.get('WEBDRIVER_WHARF_REBALANCE_INTERVAL', 3600 * 6))
 no_content = ('', 204)
 
 application = Flask('webdriver-wharf')
@@ -236,7 +238,8 @@ scheduler = BackgroundScheduler({
 })
 
 
-@scheduler.scheduled_job('interval', id='pull_latest_image', hours=1, timezone=utc)
+@scheduler.scheduled_job('interval', id='pull_latest_image',
+    seconds=pull_interval, timezone=utc)
 def pull_latest_image():
     # Try to pull a new image
     if interactions.pull(image_name):
@@ -247,7 +250,8 @@ pull_latest_image.trigger = lambda: scheduler.modify_job(
     'pull_latest_image', next_run_time=datetime.now())
 
 
-@scheduler.scheduled_job('interval', id='balance_containers', hours=6, timezone=utc)
+@scheduler.scheduled_job('interval', id='balance_containers',
+    seconds=rebalance_interval, timezone=utc)
 def balance_containers():
     try:
         # Clean up before interacting with the pool:
