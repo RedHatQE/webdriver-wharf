@@ -100,9 +100,9 @@ def checkout():
             sleep(1)
 
     logger.info('Container %s checked out', container.name)
-    balance_containers.trigger()
     info = container_info(container)
     info.update(expiry_info(container))
+    balance_containers.trigger()
     return jsonify(**{container.name: info})
 
 
