@@ -181,12 +181,12 @@ def container_info(container):
 
     def porturl(key, viewkey, fmt):
 
-        the_port =getattr(container, key)
+        the_port = getattr(container, key)
         if the_port:
             data[key] = the_port
             data[viewkey] = fmt.format(host=host_noport, port=the_port)
         else:
-            data.setdefault('unexpecedly_missing', []).extend([key, viewkey])
+            data.setdefault('missing_keys', []).extend([key, viewkey])
 
     porturl('webdriver_port', 'webdriver_url', 'http://{host}:{port}/wd/hub')
     porturl('vnc_port', 'vnc_display', 'vnc://{host}:{port}')
