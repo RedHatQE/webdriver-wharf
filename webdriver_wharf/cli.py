@@ -23,4 +23,8 @@ def main():
     # up after itself when asked
     logging_init(loglevel)
     app.application.try_trigger_before_first_request_functions()
-    app.application.run(host=listen_host, port=listen_port)
+    app.application.run(
+        host=listen_host,
+        port=listen_port,
+        threaded=True,
+    )
