@@ -5,12 +5,10 @@ The docker client and all methods that work with it live here,
 as well as state tracking between docker and the DB
 
 """
-import json
 import logging
 import os
 import time
 from contextlib import contextmanager
-from itertools import count
 from urllib import urlopen
 from threading import Thread
 import docker
