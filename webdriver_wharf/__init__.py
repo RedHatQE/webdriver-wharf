@@ -9,11 +9,11 @@ except AttributeError:
     pass  # yay no docker_py
 else:
     raise ImportError("""\
-docker-py installation detect
+docker-py detected!
 
-this breaks the good docker client
-please uninstall both docker-py and docker
-to get a working docker after reinstallation of docker
+This is incompatible with the newer docker package.
+Please uninstall both docker and docker-py
+and then reinstall the newer docker package to run Wharf.
 """)
 
 lock = RLock()
