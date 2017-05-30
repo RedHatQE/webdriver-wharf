@@ -61,14 +61,6 @@ class Container(Base):
             # if other isn't a container, assume it is a datetime
             return cmp(self.created, other)
 
-    @property
-    def port_bindings(self):
-        return {
-            80: self.http_port,
-            4444: self.webdriver_port,
-            5999: self.vnc_port,
-        }
-
     @classmethod
     def from_id(cls, docker_id):
         return get_session().query(cls).filter_by(id=docker_id).first()

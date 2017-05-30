@@ -5,16 +5,14 @@ The docker client and all methods that work with it live here,
 as well as state tracking between docker and the DB
 
 """
-import json
 import logging
 import os
 import time
 from contextlib import contextmanager
-from itertools import count
 from urllib import urlopen
 from threading import Thread
-
-from docker import AutoVersionClient, errors
+import docker
+from docker.errors import APIError
 
 from webdriver_wharf import db, lock
 
@@ -24,15 +22,14 @@ except (TypeError, ValueError):
     print 'WEBDRIVER_WHARF_START_TIMEOUT must be an integer, defaulting to 60'
     start_timeout = 60
 
-# TODO: Making these configurable would be good
-# lowest port for webdriver binding
-_wd_port_start = 4900
-# Offsets for finding the other ports
-_vnc_port_offset = 5900 - _wd_port_start
-_http_port_offset = 6900 - _wd_port_start
+
+PORT_SSH = u'22/tcp'
+PORT_HTTP = u'80/tcp'
+PORT_WEBDRIVER = u'4444/tcp'
+PORT_VNC = u'5999/tcp'
 
 # docker client is localhost only for now
-client = AutoVersionClient(timeout=120)
+client = docker.from_env(timeout=120, version='auto')
 logger = logging.getLogger(__name__)
 container_pool_size = 4
 last_pulled_image_id = None
@@ -42,7 +39,7 @@ last_pulled_image_id = None
 def apierror_squasher():
     try:
         yield
-    except errors.APIError as ex:
+    except APIError as ex:
         err_tpl = 'Docker APIError Caught: %s'
         if ex.explanation:
             logger.error(err_tpl, ex.explanation)
@@ -50,54 +47,40 @@ def apierror_squasher():
             logger.error(err_tpl, ex.args[0])
 
 
-def _next_available_port():
-    # Get the list of in-use webdriver ports from docker
-    # Returns a the lowest port greater than or equal to wd_port_start
-    # that isn't currently associated with a docker pid
-    seen_wd_ports = [(c.webdriver_port, c.http_port, c.vnc_port) for c in containers()]
-
-    for wd_port in count(_wd_port_start):
-        http_port = wd_port + _http_port_offset
-        vnc_port = wd_port + _vnc_port_offset
-        if (wd_port, http_port, vnc_port) not in seen_wd_ports:
-            return wd_port
-
-
-def image_id(image):
-    # normalize image names or ids to id for easy comparison
-    try:
-        return _dgci(client.inspect_image(image), 'id')
-    except TypeError:
-        # inspect_image returned None
-        return None
+def to_docker_container(db_or_docker_container):
+    """
+    takes any kind of container and returns a real docker container
+    """
+    return client.containers.get(db_or_docker_container.id)
 
 
 def create_container(image_name):
     if last_pulled_image_id is None:
         pull()
 
-    create_info = client.create_container(image_name, detach=True, tty=True)
-    container_id = _dgci(create_info, 'id')
-    container_info = client.inspect_container(container_id)
-    name = _name(container_info)
+    container = client.containers.create(
+        image_name,
+        detach=True, tty=True,
+        # publish_all_ports=True,
+        ports={
+            PORT_VNC: None,
+            PORT_HTTP: None,
+            PORT_WEBDRIVER: None,
+        },
+        privileged=True,
+    )
 
     with db.transaction() as session, lock:
         # Use the db lock to ensure next_available_port doesn't return dupes
-        webdriver_port = _next_available_port()
-        http_port = webdriver_port + _http_port_offset
-        vnc_port = webdriver_port + _vnc_port_offset
         container = db.Container(
-            id=container_id,
+            id=container.id,
             image_id=last_pulled_image_id,
-            name=name,
-            webdriver_port=webdriver_port,
-            http_port=http_port,
-            vnc_port=vnc_port
+            name=container.name,
         )
         session.add(container)
         session.expire_on_commit = False
 
-    logger.info('Container %s created (id: %s)', name, container_id[:12])
+    logger.info('Container %s created (id: %s)', container.name, container.id)
     return container
 
 
@@ -118,7 +101,7 @@ def running(*containers_to_filter):
             # without inspecting the container, resulting in another api
             # call to docker. If ports are forwarded and we see "up" in
             # the container status, we should be good to go
-            if c['Ports'] and 'up' in str(c['Status']).lower():
+            if c.status == 'running':
                 running_containers.add(container)
     return running_containers
 
@@ -129,8 +112,23 @@ def start(*containers):
     thread_pool = []
     for container in containers:
         try:
-            client.start(container.id, privileged=True, port_bindings=container.port_bindings)
-        except errors.APIError as exc:
+            docker_container = to_docker_container(container)
+            docker_container.start()
+            docker_container.reload()
+
+            def get_port(key):
+                portlist = port_mapping[key]
+                return int(portlist[0][u'HostPort'])
+
+            port_mapping = docker_container.attrs['NetworkSettings']['Ports']
+            logger.info('updating port mapping of %s', container.id)
+
+            with db.transaction() as session:
+                container.webdriver_port = get_port(PORT_WEBDRIVER)
+                container.http_port = get_port(PORT_HTTP)
+                container.vnc_port = get_port(PORT_VNC)
+                session.merge(container)
+        except APIError as exc:
             # No need to cleanup here since normal balancing will take care of it
             logger.warning('Error starting %s', container.name)
             logger.exception(exc)
@@ -173,14 +171,14 @@ def _watch_selenium(container):
 def stop(container):
     if running(container):
         with apierror_squasher():
-            client.stop(container.id, timeout=10)
+            to_docker_container(container).stop(timeout=10)
             logger.info('Container %s stopped', container.name)
 
 
 def destroy(container):
     stop(container)
     with apierror_squasher():
-        client.remove_container(container.id, v=True)
+        to_docker_container(container).remove(v=True)
         logger.info('Container %s destroyed', container.name)
 
 
@@ -193,37 +191,27 @@ def destroy_all():
         destroy(c)
 
 
-def pull(image):
+def pull(image_name):
     global last_pulled_image_id
 
     # Add in some newlines so we can iterate over the concatenated json
-    output = client.pull(image).replace('}{', '}\r\n{')
-    # Check the docker output when running a command, explode if needed
-    for line in output.splitlines():
-        try:
-            out = json.loads(line)
-            if 'error' in out:
-                errmsg = out.get('errorDetail', {'message': out['error']})['message']
-                logger.error(errmsg)
-                # TODO: Explode here if we can't pull...
-                break
-            elif 'id' in out and 'status' in out:
-                logger.debug('{id}: {status}'.format(**out))
-        except:
-            pass
+    image = client.images.pull(image_name)
 
-    pulled_image_id = image_id(image)[:12]
+    pulled_image_id = image.id
     if pulled_image_id != last_pulled_image_id:
         # TODO: Add a config flag on this so we aren't rudely deleting peoples' images
         #       if they aren't tracking a tag
         last_pulled_image_id = pulled_image_id
-        logger.info('Pulled image "%s" (docker id: %s)', image, pulled_image_id)
+        logger.info('Pulled image "%s" (docker id: %s)', image_name, pulled_image_id)
         # flag to indicate pulled image is new
         return True
 
 
 def docker_info():
-    return {_dgci(c, 'id'): c for c in client.containers(all=True, trunc=False)}
+    return {
+        c.id: c
+        for c in client.containers.list(all=True)
+    }
 
 
 def containers():
@@ -244,13 +232,3 @@ def containers():
                     db_container.name, db_container.id)
                 session.delete(db_container)
     return containers
-
-
-def _dgci(d, key):
-    # dgci = dict get case-insensitive
-    keymap = {k.lower(): k for k in d.keys()}
-    return d.get(keymap[key.lower()])
-
-
-def _name(docker_info):
-    return _dgci(docker_info, 'name').strip('/')

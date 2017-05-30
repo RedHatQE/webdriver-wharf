@@ -172,18 +172,26 @@ def container_info(container):
     host = requesting_host()
     host_noport = host.split(':')[0]
 
-    return {
+    data = {
         'image_id': container.image_id,
         'checked_out': container.checked_out,
         'checkin_url': 'http://%s/checkin/%s' % (host, container.name),
         'renew_url': 'http://%s/renew/%s' % (host, container.name),
-        'webdriver_port': container.webdriver_port,
-        'webdriver_url': 'http://%s:%d/wd/hub' % (host_noport, container.webdriver_port),
-        'vnc_port': container.vnc_port,
-        'vnc_display': 'vnc://%s:%d' % (host_noport, container.vnc_port - 5900),
-        'http_port': container.http_port,
-        'fileviewer_url': 'http://%s:%d/' % (host_noport, container.http_port),
     }
+
+    def porturl(key, viewkey, fmt):
+
+        the_port = getattr(container, key)
+        if the_port:
+            data[key] = the_port
+            data[viewkey] = fmt.format(host=host_noport, port=the_port)
+        else:
+            data.setdefault('missing_keys', []).extend([key, viewkey])
+
+    porturl('webdriver_port', 'webdriver_url', 'http://{host}:{port}/wd/hub')
+    porturl('vnc_port', 'vnc_display', 'vnc://{host}:{port}')
+    porturl('http_port', 'fileviewer_url', 'http://{host}:{port}/')
+    return data
 
 
 def keepalive(container):
