@@ -11,9 +11,9 @@ ENV \
 RUN dnf install python-pip sqlite -y && dnf clean all
 
 ADD . /wharf-source
+add .git /wharf-source/.git
 WORKDIR wharf-source
-RUN cp webdriver_wharf.egg-info/PKG-INFO . && \
-	pip install -e . && \
+RUN pip install -e . && \
 	rm -rf ~/.pip/cache ~/.cache/pip 
 RUN mkdir -p /var/run/wharf/ && sqlite3 /var/run/wharf/containers.sqlite
 VOLUME ["/var/run/wharf/" ,"/var/run/docker.sock"]
