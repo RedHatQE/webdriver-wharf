@@ -8,10 +8,9 @@ ENV \
 	WEBDRIVER_WHARF_IMAGE=cfmeqe/sel_ff_chrome \
 	WEBDRIVER_WHARF_DB_URL=sqlite:////var/run/wharf/containers.sqlite
 
-RUN dnf install python-pip sqlite -y && dnf clean all
+RUN dnf install python-pip python-pbr git sqlite -y && dnf clean all
 
 ADD . /wharf-source
-add .git /wharf-source/.git
 WORKDIR wharf-source
 RUN pip install -e . && \
 	rm -rf ~/.pip/cache ~/.cache/pip 
