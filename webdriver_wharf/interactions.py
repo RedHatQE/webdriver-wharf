@@ -31,7 +31,6 @@ PORT_VNC = u'5999/tcp'
 # docker client is localhost only for now
 client = docker.from_env(timeout=120, version='auto')
 logger = logging.getLogger(__name__)
-container_pool_size = 4
 last_pulled_image_id = None
 
 
