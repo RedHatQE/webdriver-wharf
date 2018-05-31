@@ -190,7 +190,13 @@ def pull(image_name):
     global last_pulled_image_id
 
     # Add in some newlines so we can iterate over the concatenated json
-    image = client.images.pull(image_name, tag='latest')
+    image_result = client.images.pull(image_name, tag='latest')
+
+    if isinstance(image_result, list):
+        assert len(image_result) == 1
+        image = image_result[0]
+    else:
+        image = image_result
 
     pulled_image_id = image.id
     if pulled_image_id != last_pulled_image_id:
