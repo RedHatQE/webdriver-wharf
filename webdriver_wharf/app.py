@@ -242,8 +242,9 @@ scheduler = BackgroundScheduler({
     },
     'apscheduler.executors.default': {
         'class': 'apscheduler.executors.pool:ThreadPoolExecutor',
+        'max_workers': '15'
     },
-})
+}, daemon=True)
 
 
 @scheduler.scheduled_job('interval', id='pull_latest_image',
