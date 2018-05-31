@@ -191,7 +191,7 @@ def pull(image_name):
 
     # Add in some newlines so we can iterate over the concatenated json
     image_result = client.images.pull(image_name, tag='latest')
-    print(image_result)
+    log.debug("get image result %r", image_result)
     if isinstance(image_result, list):
         assert len(image_result) == 1
         image = image_result[0]
