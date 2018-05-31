@@ -78,11 +78,11 @@ def ensure_dir(data_dir):
             raise
 
         if ex.errno == errno.EEXIST and not os.path.isdir(data_dir):
-            print "dir exists but isn't a dir! Explode!"
+            log.error("dir %r exists but isn't a dir! Explode!", data_dir)
             raise
 
         if not os.access(data_dir, os.W_OK | os.X_OK):
-            print "Can't access dir! Explode!"
+            log.error("Can't access dir %r! Explode!", data_dir)
             raise
 
     return data_dir

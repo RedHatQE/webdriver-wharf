@@ -1,7 +1,7 @@
 import logging
 import os
 import signal
-
+import waitress
 from webdriver_wharf import app, logging_init
 
 logger = logging.getLogger(__name__)
@@ -23,8 +23,4 @@ def main():
     # up after itself when asked
     logging_init(loglevel)
     app.application.try_trigger_before_first_request_functions()
-    app.application.run(
-        host=listen_host,
-        port=listen_port,
-        threaded=True,
-    )
+    waitress.serve(app, host=listen_host, port=listen_port)

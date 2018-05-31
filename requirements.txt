@@ -1,5 +1,6 @@
 appdirs
-apscheduler>=3
+apscheduler>=3.5
+waitress
 docker
 Flask
 pytz

@@ -15,11 +15,12 @@ import docker
 from docker.errors import APIError
 
 from webdriver_wharf import db, lock
+log = logging.getLogger(__name__)
 
 try:
     start_timeout = int(os.environ.get('WEBDRIVER_WHARF_START_TIMEOUT', 60))
 except (TypeError, ValueError):
-    print 'WEBDRIVER_WHARF_START_TIMEOUT must be an integer, defaulting to 60'
+    log.warning('WEBDRIVER_WHARF_START_TIMEOUT must be an integer, defaulting to 60')
     start_timeout = 60
 
 
@@ -30,7 +31,6 @@ PORT_VNC = u'5999/tcp'
 
 # docker client is localhost only for now
 client = docker.from_env(timeout=120, version='auto')
-logger = logging.getLogger(__name__)
 last_pulled_image_id = None
 
 
@@ -39,11 +39,7 @@ def apierror_squasher():
     try:
         yield
     except APIError as ex:
-        err_tpl = 'Docker APIError Caught: %s'
-        if ex.explanation:
-            logger.error(err_tpl, ex.explanation)
-        else:
-            logger.error(err_tpl, ex.args[0])
+        log.error('Docker APIError Caught: %s', ex.explanation or ex.args[0])
 
 
 def to_docker_container(db_or_docker_container):
@@ -79,7 +75,7 @@ def create_container(image_name):
         session.add(container)
         session.expire_on_commit = False
 
-    logger.info('Container %s created (id: %s)', container.name, container.id)
+    log.info('Container %s created (id: %s)', container.name, container.id)
     return container
 
 
@@ -107,7 +103,7 @@ def running(*containers_to_filter):
 
 def start(*containers):
     if containers:
-        logger.info('Starting %d containers' % len(containers))
+        log.info('Starting %d containers' % len(containers))
     thread_pool = []
     for container in containers:
         try:
@@ -120,7 +116,7 @@ def start(*containers):
                 return int(portlist[0][u'HostPort'])
 
             port_mapping = docker_container.attrs['NetworkSettings']['Ports']
-            logger.info('updating port mapping of %s', container.id)
+            log.info('updating port mapping of %s', container.id)
 
             with db.transaction() as session:
                 container.webdriver_port = get_port(PORT_WEBDRIVER)
@@ -129,8 +125,8 @@ def start(*containers):
                 session.merge(container)
         except APIError as exc:
             # No need to cleanup here since normal balancing will take care of it
-            logger.warning('Error starting %s', container.name)
-            logger.exception(exc)
+            log.warning('Error starting %s', container.name)
+            log.exception(exc)
             continue
 
         thread = Thread(target=_watch_selenium, args=(container,))
@@ -146,7 +142,7 @@ def check_selenium(container):
         if 200 <= status < 400:
             return True
         else:
-            logger.info('selenium on %s responded with %d' % (container.name, status))
+            log.info('selenium on %s responded with %d' % (container.name, status))
             return False
     except Exception:
         return False
@@ -157,12 +153,12 @@ def _watch_selenium(container):
     start_time = time.time()
     while True:
         if check_selenium(container):
-            logger.info('Container %s started', container.name)
+            log.info('Container %s started', container.name)
             return
         else:
-            logger.debug('port %d not yet open, sleeping...' % container.webdriver_port)
+            log.debug('port %d not yet open, sleeping...' % container.webdriver_port)
             if time.time() - start_time > start_timeout:
-                logger.warning('Container %s failed to start selenium', container.name)
+                log.warning('Container %s failed to start selenium', container.name)
                 return
             time.sleep(10)
 
@@ -171,22 +167,22 @@ def stop(container):
     if running(container):
         with apierror_squasher():
             to_docker_container(container).stop(timeout=10)
-            logger.info('Container %s stopped', container.name)
+            log.info('Container %s stopped', container.name)
 
 
 def destroy(container):
     stop(container)
     with apierror_squasher():
         to_docker_container(container).remove(v=True)
-        logger.info('Container %s destroyed', container.name)
+        log.info('Container %s destroyed', container.name)
 
 
 def destroy_all():
     # This is not an API function
     destroy_us = containers()
-    print 'Destroying %d containers' % len(destroy_us)
+    log.info('Destroying %s containers', len(destroy_us))
     for c in destroy_us:
-        print 'Destroying %s' % c.name
+        log.debug('Destroying %s', c.name)
         destroy(c)
 
 
@@ -194,14 +190,14 @@ def pull(image_name):
     global last_pulled_image_id
 
     # Add in some newlines so we can iterate over the concatenated json
-    image = client.images.pull(image_name)
+    image = client.images.pull(image_name, tag='latest')
 
     pulled_image_id = image.id
     if pulled_image_id != last_pulled_image_id:
         # TODO: Add a config flag on this so we aren't rudely deleting peoples' images
         #       if they aren't tracking a tag
         last_pulled_image_id = pulled_image_id
-        logger.info('Pulled image "%s" (docker id: %s)', image_name, pulled_image_id)
+        log.info('Pulled image "%s" (docker id: %s)', image_name, pulled_image_id)
         # flag to indicate pulled image is new
         return True
 
@@ -219,7 +215,7 @@ def containers():
     for container_id in docker_info():
         container = db.Container.from_id(container_id)
         if container is None:
-            logger.debug("Container %s isn't in the DB; ignored", id)
+            log.debug("Container %s isn't in the DB; ignored", id)
             continue
         containers.add(container)
 
@@ -227,7 +223,7 @@ def containers():
     with db.transaction() as session:
         for db_container in session.query(db.Container).all():
             if db_container not in containers:
-                logger.debug('Container %s (%s) no longer exists, removing from DB',
+                log.debug('Container %s (%s) no longer exists, removing from DB',
                     db_container.name, db_container.id)
                 session.delete(db_container)
     return containers

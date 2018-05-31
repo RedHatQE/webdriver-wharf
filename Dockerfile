@@ -1,6 +1,6 @@
 # make image to make the image and make run to run it
 
-FROM fedora:25
+FROM fedora:28
 ENV \
 	WEBDRIVER_WHARF_LOG_LEVEL=info \
 	WEBDRIVER_WHARF_LISTEN_HOST=0.0.0.0 \
@@ -10,12 +10,12 @@ ENV \
 
 RUN dnf install python-pip python-pbr git sqlite -y && dnf clean all
 ADD requirements.txt requirements.txt
-RUN pip install -r requirements.txt && \
+RUN pip install --user -r requirements.txt && \
 	rm -rf ~/.pip/cache ~/.cache/pip 
 ADD . /wharf-source
 WORKDIR wharf-source
 RUN git pull https://github.com/RedHatQE/webdriver-wharf/ --tags
-RUN pip install -e . && \
+RUN pip install --user -e . && \
 	rm -rf ~/.pip/cache ~/.cache/pip 
 RUN mkdir -p /var/run/wharf/ && sqlite3 /var/run/wharf/containers.sqlite
 VOLUME ["/var/run/wharf/" ,"/var/run/docker.sock"]

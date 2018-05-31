@@ -258,27 +258,32 @@ pull_latest_image.trigger = lambda: scheduler.modify_job(
     'pull_latest_image', next_run_time=datetime.now())
 
 
-@scheduler.scheduled_job('interval', id='balance_containers',
+def stop_outdated():
+    # Clean up before interacting with the pool:
+    # - checks in containers that are checked out longer than the max lifetime
+    # - stops containers that aren't running if their image is out of date
+    # - stops containers from the pool not running selenium
+    for container in interactions.containers():
+        if container.checked_out:
+            checked_out_time = (datetime.utcnow() - container.checked_out).total_seconds()
+            if checked_out_time > max_checkout_time:
+                logger.info('Container %s checked out longer than %d seconds, forcing stop',
+                    container.name, max_checkout_time)
+                interactions.stop(container)
+                continue
+        else:
+            if container.image_id != interactions.last_pulled_image_id:
+                logger.info('Container %s running an old image', container.name)
+                interactions.stop(container)
+                continue
+
+
+@scheduler.scheduled_job(
+    'interval', id='balance_containers',
     seconds=rebalance_interval, timezone=utc)
 def balance_containers():
     try:
-        # Clean up before interacting with the pool:
-        # - checks in containers that are checked out longer than the max lifetime
-        # - stops containers that aren't running if their image is out of date
-        # - stops containers from the pool not running selenium
-        for container in interactions.containers():
-            if container.checked_out:
-                if ((datetime.utcnow() - container.checked_out).total_seconds()
-                        > max_checkout_time):
-                    logger.info('Container %s checked out longer than %d seconds, forcing stop',
-                        container.name, max_checkout_time)
-                    interactions.stop(container)
-                    continue
-            else:
-                if container.image_id != interactions.last_pulled_image_id:
-                    logger.info('Container %s running an old image', container.name)
-                    interactions.stop(container)
-                    continue
+        stop_outdated()
 
         pool_balanced = False
         while not pool_balanced:
@@ -358,6 +363,7 @@ def _wharf_init():
     # Before doing anything else, grab the image or explode
     logger.info('Pulling image %s -- this could take a while', image_name)
     interactions.pull(image_name)
+    logger.info('done')
     scheduler.start()
     balance_containers.trigger()
     # Give the scheduler and executor a nice cool glass of STFU
@@ -367,6 +373,3 @@ def _wharf_init():
     logging.getLogger('apscheduler.scheduler').setLevel(logging.ERROR)
     logging.getLogger('apscheduler.executors.default').setLevel(logging.ERROR)
     logger.info('Initializing pool, ready for checkout')
-
-if __name__ == '__main__':
-    application.run()
