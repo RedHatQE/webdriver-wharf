@@ -16,7 +16,7 @@ Base = declarative_base()
 
 
 class Container(Base):
-    __tablename__ = 'container'
+    __tablename__ = "container"
     # Docker ID
     id = Column(String(64), primary_key=True)
     # Images ID, so we can tell when containers are stale
@@ -29,7 +29,7 @@ class Container(Base):
     created = Column(DateTime, default=datetime.utcnow)
     # Exposed ports
     http_port = Column(Integer)
-    webdriver_port = Column('webdriver_port', Integer)
+    webdriver_port = Column("webdriver_port", Integer)
     vnc_port = Column(Integer)
 
     def __iter__(self):
@@ -39,7 +39,7 @@ class Container(Base):
 
     def __repr__(self):
         # e.g. "<webdriver_wharf.db.Container 'crazy_ivan'>"
-        return "<%s.%s '%s'>" % (__name__, type(self).__name__, self.name)
+        return "<{}.{} '{}'>".format(__name__, type(self).__name__, self.name)
 
     def __eq__(self, other):
         # If the IDs match, they're the same container
@@ -81,31 +81,33 @@ def ensure_dir(data_dir):
 
 # Make sure we've got a place to put a DB
 try:
-    url = os.environ['WEBDRIVER_WHARF_DB_URL']
+    url = os.environ["WEBDRIVER_WHARF_DB_URL"]
 except KeyError:
-    _dirs = AppDirs('webdriver-wharf')
+    _dirs = AppDirs("webdriver-wharf")
     try:
         # Use the site data dir
         data_dir = ensure_dir(_dirs.site_data_dir)
     except OSError as ex:
-        if (ex.errno != errno.EACCES):
+        if ex.errno != errno.EACCES:
             raise
 
         # If we got permission denied, we aren't root. Use the user dir
         data_dir = ensure_dir(_dirs.user_data_dir)
 
-    url = 'sqlite:///' + os.path.join(data_dir, 'db.sqlite')
+    url = "sqlite:///" + os.path.join(data_dir, "db.sqlite")
 
 
 def engine():
-    if not hasattr(thread_local, 'engine'):
-        thread_local.engine = create_engine(url, connect_args={'check_same_thread': False})
+    if not hasattr(thread_local, "engine"):
+        thread_local.engine = create_engine(
+            url, connect_args={"check_same_thread": False}
+        )
         Base.metadata.create_all(thread_local.engine)
     return thread_local.engine
 
 
 def get_session():
-    if not hasattr(thread_local, 'sessionmaker'):
+    if not hasattr(thread_local, "sessionmaker"):
         thread_local.sessionmaker = sessionmaker(bind=engine())
     return thread_local.sessionmaker()
 
@@ -116,7 +118,7 @@ def transaction():
     try:
         yield session
         session.commit()
-    except:
+    except Exception:
         session.rollback()
         raise
     finally:
