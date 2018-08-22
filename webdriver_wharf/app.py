@@ -7,7 +7,7 @@ from time import sleep, time
 from operator import attrgetter
 from apscheduler.schedulers.background import BackgroundScheduler
 from docker.errors import APIError
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, render_template
 from pytz import utc
 from requests.exceptions import RequestException
 
@@ -24,63 +24,7 @@ pull_interval = int(os.environ.get("WEBDRIVER_WHARF_IMAGE_PULL_INTERVAL", 3600))
 rebalance_interval = int(os.environ.get("WEBDRIVER_WHARF_REBALANCE_INTERVAL", 3600 * 6))
 no_content = ("", 204)
 
-application = Flask("webdriver-wharf")
-
-index_document = (
-    """
-<pre>Webdriver Wharf
-
-/status - Get information on running containers
-
-/status/[container_name] - Get information on a specific container
-
-/checkout - Check out a running webdriver container
-
-    Returns a JSON mapping in the form of {container: data}, where data is a mapping
-    of information related to the spawned container, with the following keys (sometimes more):
-
-        checkin_url - URL to use to check the container back in when finished
-        webdriver_port - integer port number of the webdriver server on this host
-        webdriver_url - webdriver URL that can be injected as a selenium command_executor
-        vnc_port - integer port number of the VNC server for this webdriver container
-        vnc_url - URL that might launch a VNC viewer when clicked
-
-    Renewal information will also be returned in this mapping, see /renew for more info
-
-/checkin/[container_name] - Check in a webdriver container with the given name
-/checkin/all - Check in all containers
-
-    Keep track of the container you checked out, and try to check it back it when you're done.
-
-    Containers will be automatically checked in after %d seconds.
-
-    There should be no expectation that a container will continue to exist after being checked in.
-
-/renew/[container_name]
-
-    Update the expiration time of the named container. The following keys will be included:
-
-        now - current time in seconds from the epoch from the server's point of view
-        expire_time - time in seconds from the epoch when this container will expire
-        expire_interval - time in seconds until expire_time
-
-    now + expire_interval = expire_time
-
-    All three are included to simplify renew implementation on the client side.
-
-/pull - Trigger a docker pull of the configured image
-
-/rebalance - Trigger pool balancing, mainly useful in debugging
-
-Behind the scenes, webdriver wharf tries to maintain a pool of containers ready to be checked out.
-It occasionally pulls new images, and will destroy checked-in containers running the old image.
-
-All views return JSON or nothing, and respond to POST and GET verbs
-
-</pre>
-"""
-    % max_checkout_time
-)
+application = Flask("webdriver_wharf")
 
 
 @application.route("/checkout")
@@ -170,7 +114,7 @@ def container_status(container_name):
 
 @application.route("/")
 def index():
-    return index_document
+    return render_template("index.html", max_checkout_time=max_checkout_time)
 
 
 def container_info(container):
