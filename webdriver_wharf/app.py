@@ -4,7 +4,7 @@ from datetime import datetime
 from pkg_resources import require
 from threading import Thread
 from time import sleep, time
-
+from operator import attrgetter
 from apscheduler.schedulers.background import BackgroundScheduler
 from docker.errors import APIError
 from flask import Flask, jsonify, request
@@ -15,7 +15,7 @@ from webdriver_wharf import db, interactions, lock
 
 pool = set()
 logger = logging.getLogger(__name__)
-image_name = os.environ.get('WEBDRIVER_WHARF_IMAGE', 'cfmeqe/sel_ff_chrome')
+image_name = os.environ.get('WEBDRIVER_WHARF_IMAGE', 'cfmeqe/cfme_sel_stable')
 # Number of containers to have on "hot standby" for checkout
 pool_size = int(os.environ.get('WEBDRIVER_WHARF_POOL_SIZE', 4))
 # Max time for an appliance to be checked out before it's forcibly checked in, in seconds.
@@ -315,10 +315,7 @@ def balance_containers():
                     # there's more work to be done
                     containers_to_start = 4
                 logger.info('Pool %s, adding %d containers', pool_stat_str, containers_to_start)
-                new_containers = []
-                for __ in range(containers_to_start):
-                    new_containers.append(interactions.create_container(image_name))
-                interactions.start(*new_containers)
+                interactions.create_containers(image_name, containers_to_start)
                 # after starting, continue the loop to ensure that
                 # starting new containers happens before destruction
                 continue
@@ -330,19 +327,11 @@ def balance_containers():
             if containers_to_stop > 0:
                 logger.debug('%d containers to stop', containers_to_stop)
                 with lock:
-                    oldest_container = sorted(pool)[0]
+                    oldest_container = min(pool, key=attrgetter('created'))
                     logger.info('Pool %s, removing oldest container %s',
                         pool_stat_str, oldest_container.name)
                     interactions.stop(oldest_container)
                 # again, continue the loop here to save destroys for last
-                continue
-
-            # after balancing the pool, destroy oldest stopped container
-            if not_running:
-                if len(not_running) % 4 == 0:
-                    logger.info('Pool %s' % pool_stat_str)
-
-                interactions.destroy(sorted(not_running)[0])
                 continue
 
             # If we've made it this far...
@@ -352,6 +341,7 @@ def balance_containers():
         logger.error('%s while balancing containers, retrying.' % type(exc).__name__)
         logger.exception(exc)
         balance_containers.trigger()
+
 balance_containers.trigger = lambda: scheduler.modify_job(
     'balance_containers', next_run_time=datetime.now())
 

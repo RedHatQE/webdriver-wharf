@@ -9,7 +9,7 @@ import logging
 import os
 import time
 from contextlib import contextmanager
-from urllib import urlopen
+import requests
 from threading import Thread
 import docker
 from docker.errors import APIError
@@ -49,11 +49,11 @@ def to_docker_container(db_or_docker_container):
     return client.containers.get(db_or_docker_container.id)
 
 
-def create_container(image_name):
+def run_container(image_name):
     if last_pulled_image_id is None:
         pull()
 
-    container = client.containers.create(
+    container = client.containers.run(
         image_name,
         detach=True, tty=True,
         # publish_all_ports=True,
@@ -63,6 +63,7 @@ def create_container(image_name):
             PORT_WEBDRIVER: None,
         },
         privileged=True,
+        remove=True,
     )
 
     with db.transaction() as session, lock:
@@ -77,6 +78,41 @@ def create_container(image_name):
 
     log.info('Container %s created (id: %s)', container.name, container.id)
     return container
+
+
+def create_containers(image_name, number):
+    containers = [run_container(image_name) for _ in range(number)]
+
+    thread_pool = []
+    for container in containers:
+        try:
+            docker_container = to_docker_container(container)
+            docker_container.start()
+            docker_container.reload()
+
+            port_mapping = docker_container.attrs['NetworkSettings']['Ports']
+            log.info('updating port mapping of %s', container.id)
+
+            def get_port(key, pm=port_mapping):
+                portlist = pm[key]
+                return int(portlist[0][u'HostPort'])
+
+            with db.transaction() as session:
+                container.webdriver_port = get_port(PORT_WEBDRIVER)
+                container.http_port = get_port(PORT_HTTP)
+                container.vnc_port = get_port(PORT_VNC)
+                session.merge(container)
+        except APIError as exc:
+            # No need to cleanup here since normal balancing will take care of it
+            log.warning('Error starting %s', container.name)
+            log.exception(exc)
+            continue
+
+        thread = Thread(target=_watch_selenium, args=(container,))
+        thread_pool.append(thread)
+        thread.start()
+    for thread in thread_pool:
+        thread.join()
 
 
 def running(*containers_to_filter):
@@ -101,44 +137,9 @@ def running(*containers_to_filter):
     return running_containers
 
 
-def start(*containers):
-    if containers:
-        log.info('Starting %d containers' % len(containers))
-    thread_pool = []
-    for container in containers:
-        try:
-            docker_container = to_docker_container(container)
-            docker_container.start()
-            docker_container.reload()
-
-            def get_port(key):
-                portlist = port_mapping[key]
-                return int(portlist[0][u'HostPort'])
-
-            port_mapping = docker_container.attrs['NetworkSettings']['Ports']
-            log.info('updating port mapping of %s', container.id)
-
-            with db.transaction() as session:
-                container.webdriver_port = get_port(PORT_WEBDRIVER)
-                container.http_port = get_port(PORT_HTTP)
-                container.vnc_port = get_port(PORT_VNC)
-                session.merge(container)
-        except APIError as exc:
-            # No need to cleanup here since normal balancing will take care of it
-            log.warning('Error starting %s', container.name)
-            log.exception(exc)
-            continue
-
-        thread = Thread(target=_watch_selenium, args=(container,))
-        thread_pool.append(thread)
-        thread.start()
-    for thread in thread_pool:
-        thread.join()
-
-
 def check_selenium(container):
     try:
-        status = urlopen('http://localhost:%d/wd/hub' % container.webdriver_port).getcode()
+        status = requests.get('http://localhost:%d/wd/hub' % container.webdriver_port).status_code
         if 200 <= status < 400:
             return True
         else:

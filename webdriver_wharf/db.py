@@ -10,7 +10,7 @@ from sqlalchemy import create_engine, Column, DateTime, Integer, String
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
 
-logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 thread_local = local()
 Base = declarative_base()
 
@@ -51,15 +51,6 @@ class Container(Base):
     def __hash__(self):
         # Id is hex, use it to make Containers hashable
         return int(self.id, 16)
-
-    def __cmp__(self, other):
-        # containers are sortable, oldest first
-        if isinstance(other, Container):
-            # containers are sortable by their creation time
-            return cmp(self.created, other.created)
-        else:
-            # if other isn't a container, assume it is a datetime
-            return cmp(self.created, other)
 
     @classmethod
     def from_id(cls, docker_id):
