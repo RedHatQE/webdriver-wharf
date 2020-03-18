@@ -31,6 +31,15 @@ WantedBy=multi-user.target
 Note that on RPM-bases systems, `EnvironmentFile` should probably be
 `/etc/sysconfig/webdriver-wharf`
 
+
+Docker example config
+=====================
+
+```
+docker run -v /var/run/docker.sock:/var/run/docker.sock -e WEBDRIVER_WHARF_IMAGE=quay.io/redhatqe/selenium-standalone -e WEBDRIVER_WHARF_POOL_SIZE=16 --publish 4899:4899 --net=host --detach --privileged --name wharf-master -v wharf-data:/var/run/wharf/ wharf:latest
+```
+
+
 Environment Variables
 =====================
 
